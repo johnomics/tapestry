@@ -1,29 +1,58 @@
 #!/usr/bin/env python3.6
 
-import argparse, sys
+import argparse, sys, os, errno
 from Bio import SeqIO
 
 class Assembly:
-    def __init__(self, assembly):
+    def __init__(self, assembly, outdir):
         self.assembly = assembly
         self.contigs = self.load_genome(assembly)
+        self.outdir = outdir
+        self.setup_output()
 
     def load_genome(self, assembly):
         print("Loading genome assembly...", file=sys.stderr)
+        contigs = {}
         try:
             with open(assembly, 'r') as f:
-                contigs = SeqIO.to_dict(SeqIO.parse(f, "fasta"))
-                for contig in contigs:
-                    contigs[contig].seq = contigs[contig].seq.upper()
+                seqs = SeqIO.to_dict(SeqIO.parse(f, "fasta"))
+                for contig in seqs:
+                    seqs[contig].seq = seqs[contig].seq.upper()
+                    contigs[contig] = Contig(contig, seqs[contig].seq)
         except IOError:
             print(f"Can't load assembly from file {assembly}!")
             sys.exit()
 
         return contigs
 
+    def setup_output(self):
+        try:
+            os.mkdir(self.outdir)
+            print(f"Created output directory {self.outdir}", file=sys.stderr)
+        except OSError as exc:
+            if exc.errno == errno.EEXIST:
+                print(f"Output directory {self.outdir} found, will use existing analysis files if present, but overwrite reports", file=sys.stderr)
+            else:
+                raise
+
     def report(self):
-        print("OK")
-    
+        try:
+            with open(f"{self.outdir}/report.txt", 'wt') as reportfile:
+                for contig in self.contigs:
+                    print(f"{contig}\t{self.contigs[contig].report()}", file=reportfile)
+        except IOError:
+            print(f"ERROR: Could not open report file {self.outdir}/report.txt")
+            
+class Contig:
+    def __init__(self, name, seq):
+        self.name = name
+        self.seq = seq
+
+    def __len__(self):
+        return len(self.seq)
+
+    def report(self):
+        return f"{len(self)}"
 
 def get_args():
     parser = argparse.ArgumentParser(description='''Tapestry: assess genome assembly quality
@@ -36,7 +65,7 @@ def get_args():
     parser.add_argument('-a', '--assembly', type=str, required=True)
     parser.add_argument('-r', '--reads', type=str)
     parser.add_argument('-t', '--threads', type=int, default=1)
-    parser.add_argument('-o', '--output', type=str)
+    parser.add_argument('-o', '--output', type=str, default="tapestry_output")
 
     return parser.parse_args()
 
@@ -44,7 +73,7 @@ def get_args():
 if __name__ == '__main__':
     args = get_args()
 
-    assembly = Assembly(args.assembly)
+    assembly = Assembly(args.assembly, args.output)
 
     assembly.report()
 
