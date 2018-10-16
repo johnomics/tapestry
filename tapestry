@@ -1,0 +1,51 @@
+#!/usr/bin/env python3.6
+
+import argparse, sys
+from Bio import SeqIO
+
+class Assembly:
+    def __init__(self, assembly):
+        self.assembly = assembly
+        self.contigs = self.load_genome(assembly)
+
+    def load_genome(self, assembly):
+        print("Loading genome assembly...", file=sys.stderr)
+        try:
+            with open(assembly, 'r') as f:
+                contigs = SeqIO.to_dict(SeqIO.parse(f, "fasta"))
+                for contig in contigs:
+                    contigs[contig].seq = contigs[contig].seq.upper()
+        except IOError:
+            print(f"Can't load assembly from file {assembly}!")
+            sys.exit()
+
+        return contigs
+
+    def report(self):
+        print("OK")
+    
+
+def get_args():
+    parser = argparse.ArgumentParser(description='''Tapestry: assess genome assembly quality
+    
+        -a genome assembly FASTA
+        -r reads FASTQ
+        -t threads
+        -o output folder''')
+
+    parser.add_argument('-a', '--assembly', type=str, required=True)
+    parser.add_argument('-r', '--reads', type=str)
+    parser.add_argument('-t', '--threads', type=int, default=1)
+    parser.add_argument('-o', '--output', type=str)
+
+    return parser.parse_args()
+
+
+if __name__ == '__main__':
+    args = get_args()
+
+    assembly = Assembly(args.assembly)
+
+    assembly.report()
+
+    print("Done", file=sys.stderr)
