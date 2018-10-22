@@ -4,15 +4,18 @@ __version__=0.1
 
 import argparse, sys, os, errno, gzip, pysam
 import logging as log
+from functools import partial
+from shutil import copyfile
+from multiprocessing import Pool
+from statistics import mean
 
 from plotly.offline import plot
 from plotly.graph_objs import Bar, Layout
 
-from functools import partial
-from shutil import copyfile
-from multiprocessing import Pool
-from Bio import SeqIO
-from statistics import mean
+from Bio import SeqIO, motifs
+from Bio.Seq import Seq
+from Bio.SeqUtils import GC
+
 from plumbum.cmd import minimap2, mosdepth, samtools, nucmer
 from plumbum.cmd import head, cut, zgrep
 
@@ -55,11 +58,12 @@ class memoize(object):
 
 
 class Assembly:
-    def __init__(self, assemblyfile, readfile, outdir, threads):
+    def __init__(self, assemblyfile, readfile, telomeres, outdir, cores):
         self.assemblyfile = assemblyfile
         self.readfile = readfile
+        self.telomeres = [motifs.create([Seq(t[0])]) for t in telomeres] if telomeres else None
         self.outdir = outdir
-        self.threads = threads
+        self.cores = cores
 
         self.setup_output()
         self.prepare_genome()
@@ -67,9 +71,10 @@ class Assembly:
 
         if self.readfile:
             self.align_reads_to_assembly()
-            self.align_contigs_to_assembly()
         else:
-            log.warning("No read file provided (-r), will skip read metrics")
+            log.warning("No read file provided (-r), will skip read metrics unless previous analysis files exist")
+
+        self.align_contigs_to_assembly()
 
     def setup_output(self):
         try:
@@ -108,7 +113,7 @@ class Assembly:
             log.info(f"Loading genome assembly")
             for rec in SeqIO.parse(open(f"{self.outdir}/assembly.fasta", 'r'), "fasta"):
                 rec.seq = rec.seq.upper()
-                contigs.append(Contig(rec.id, rec.seq, self.outdir))
+                contigs.append(Contig(rec, self.telomeres, self.outdir))
         except IOError:
             log.error(f"Can't load assembly from file {self.assemblyfile}!")
             sys.exit()
@@ -122,14 +127,14 @@ class Assembly:
         else:
             log.info(f"Aligning reads {os.path.abspath(self.readfile)} to assembly")
 
-            # samtools uses threads-1 because -@ specifies additional threads and defaults to 0
+            # samtools uses cores-1 because -@ specifies additional cores and defaults to 0
             try:
-                align_reads = minimap2["-xmap-ont", "-a", f"-t{self.threads}", \
+                align_reads = minimap2["-xmap-ont", "-a", f"-t{self.cores}", \
                                        f"{self.outdir}/assembly.fasta", self.readfile] | \
-                              samtools["sort", f"-@{self.threads-1}", \
+                              samtools["sort", f"-@{self.cores-1}", \
                                        f"-o{self.outdir}/reads_assembly.bam"]
                 align_reads()
-                samtools("index", f"-@{self.threads-1}", f"{self.outdir}/reads_assembly.bam")
+                samtools("index", f"-@{self.cores-1}", f"{self.outdir}/reads_assembly.bam")
             except:
                 log.error(f"Failed to align {self.readfile} to {self.outdir}/assembly.fasta")
                 sys.exit()
@@ -142,14 +147,14 @@ class Assembly:
         else:
             log.info("Aligning assembly to itself...")
             try:
-                 nucmer(f"-t{self.threads}", f"--sam-short={self.outdir}/contigs_assembly.sam", \
+                 nucmer(f"-t{self.cores}", f"--sam-short={self.outdir}/contigs_assembly.sam", \
                         f"{self.outdir}/assembly.fasta", f"{self.outdir}/assembly.fasta")
                  nucmer_to_bam = samtools["view", f"-ht{self.outdir}/assembly.fasta.fai", \
                                           f"{self.outdir}/contigs_assembly.sam"] | \
-                                 samtools["sort", f"-@{self.threads-1}", \
+                                 samtools["sort", f"-@{self.cores-1}", \
                                           f"-o{self.outdir}/contigs_assembly.bam"]
                  nucmer_to_bam()
-                 samtools("index", f"-@{self.threads-1}", f"{self.outdir}/contigs_assembly.bam")
+                 samtools("index", f"-@{self.cores-1}", f"{self.outdir}/contigs_assembly.bam")
                  os.remove(f"{self.outdir}/contigs_assembly.sam")
             except:
                  log.error(f"Failed to align {self.outdir}/assembly.fasta to itself")
@@ -165,7 +170,7 @@ class Assembly:
         log.info(f"Running mosdepth for {filestub}...")
         
         try:
-            mosdepth(f"-t{self.threads}", "-b1000", "-n", \
+            mosdepth(f"-t{self.cores}", "-b1000", "-n", \
                      f"{self.outdir}/{filestub}", \
                      f"{self.outdir}/{filestub}.bam")
         except:
@@ -175,7 +180,7 @@ class Assembly:
     def report(self):
         try:
             with open(f"{self.outdir}/report.txt", 'wt') as reportfile:
-                with Pool(self.threads) as p:
+                with Pool(self.cores) as p:
                     for report in p.map(contig_report, self.contigs):
                         print(report, file=reportfile)
         except IOError:
@@ -189,31 +194,49 @@ class Assembly:
 
 # Defining contig report at top level rather than in class so it works with multiprocessing
 def contig_report(contig):
-    return f"{contig.name}\t{len(contig)}\t{contig.depth('reads')}\t{contig.depth('contigs')}\t{contig.num_alignments()}"
+    tel_start, tel_end = contig.num_telomeres()
+    return f"{contig.name}\t{len(contig)}\t{contig.GC()}\t{contig.depth('reads')}\t{contig.depth('contigs')}\t{contig.num_alignments()}\t{tel_start}\t{tel_end}"
             
 class Contig:
-    def __init__(self, name, seq, outdir):
-        self.name = name
-        self.seq = seq
+    def __init__(self, rec, telomeres, outdir):
+        self.name = rec.id
+        self.rec = rec
+        self.telomeres = telomeres
         self.outdir = outdir
 
     def __len__(self):
-        return len(self.seq)
+        return len(self.rec.seq)
+
+    @memoize
+    def GC(self):
+       return f"{GC(self.rec.seq):.1f}"
 
     @memoize
     def depth(self, mapped):
-        depths = []
-        for line in zgrep(f"^{self.name}", f"{self.outdir}/{mapped}_assembly.regions.bed.gz").split('\n')[:-1]:
-            depths.append(float(line.split('\t')[3]))
-        return f"{mean(depths):.1f}"
+        depths=[]
+        if os.path.exists(f"{self.outdir}/{mapped}_assembly.regions.bed.gz"):
+            for line in zgrep(f"^{self.name}", f"{self.outdir}/{mapped}_assembly.regions.bed.gz").split('\n')[:-1]:
+                depths.append(float(line.split('\t')[3]))
+        return f"{mean(depths):.1f}" if depths else 0
 
     @memoize
     def num_alignments(self):
-        bam = pysam.AlignmentFile(f"{self.outdir}/reads_assembly.bam", 'rb')
-        alignments = 0
-        for aln in bam.fetch(self.name):
-            alignments += 1
+        alignments=0
+        if os.path.exists(f"{self.outdir}/reads_assembly.bam"):
+            bam = pysam.AlignmentFile(f"{self.outdir}/reads_assembly.bam", 'rb')
+            for aln in bam.fetch(self.name):
+                alignments += 1
         return alignments
+
+    @memoize
+    def num_telomeres(self):
+        start_matches = end_matches = 0
+        if self.telomeres:
+            for t in self.telomeres:
+                for s in t, t.reverse_complement():
+                    start_matches += len(list(s.instances.search(self.rec[:1000].seq)))
+                    end_matches   += len(list(s.instances.search(self.rec[-1000:].seq)))
+        return start_matches, end_matches
 
 def set_verbosity(verbosity):
     if verbosity == 1:
@@ -250,7 +273,8 @@ def get_args():
 
     parser.add_argument('-a', '--assembly', help="filename of assembly in FASTA format", type=str, required=True)
     parser.add_argument('-r', '--reads', help="filename of reads in gzipped FASTQ format", type=str)
-    parser.add_argument('-t', '--threads', help="number of parallel threads to use", type=int, default=1)
+    parser.add_argument('-t', '--telomere', help="telomere sequence to search for", type=str, action='append', nargs='+')
+    parser.add_argument('-c', '--cores', help="number of parallel cores to use", type=int, default=1)
     parser.add_argument('-o', '--output', help="directory to write output, default tapestry_output", type=str, default="tapestry_output")
     parser.add_argument('-v', '--verbose', help="report on progress", action="count", default=0)
     parser.add_argument('-V', '--version', help="report version number and exit", action="store_true") 
@@ -265,8 +289,8 @@ def get_args():
 
     set_verbosity(args.verbose)
 
-    if args.threads<1:
-        log.error("Threads must be at least 1")
+    if args.cores<1:
+        log.error("Must specify at least one core")
         sys.exit()
 
     return args
@@ -279,7 +303,7 @@ if __name__ == '__main__':
 
     versions(args.verbose)
 
-    assembly = Assembly(args.assembly, args.reads, args.output, args.threads)
+    assembly = Assembly(args.assembly, args.reads, args.telomere, args.output, args.cores)
 
     assembly.report()
 
