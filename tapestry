@@ -2,11 +2,14 @@
 
 __version__=0.1
 
-import argparse, sys, os, errno
+import argparse, sys, os, errno, gzip
 import logging as log
 from shutil import copyfile
+from multiprocessing import Pool
 from Bio import SeqIO
-from plumbum.cmd import minimap2, mosdepth, samtools, nucmer, head, cut
+from statistics import mean
+from plumbum.cmd import minimap2, mosdepth, samtools, nucmer
+from plumbum.cmd import head, cut, zgrep
 
 
 class Assembly:
@@ -17,7 +20,7 @@ class Assembly:
         self.threads = threads
 
         self.setup_output()
-
+        self.prepare_genome()
         self.contigs = self.load_genome()
 
         if self.readfile:
@@ -36,9 +39,7 @@ class Assembly:
             else:
                 raise
 
-    def load_genome(self):
-        contigs = {}
-
+    def prepare_genome(self):
         if os.path.exists(f"{self.outdir}/assembly.fasta"):
             log.info(f"Will use existing {self.outdir}/assembly.fasta file")
         else:
@@ -49,16 +50,6 @@ class Assembly:
                  log.error(f"Can't copy assembly to {self.outdir}")
                  sys.exit()
 
-        try:
-            log.info(f"Loading genome assembly")
-            seqs = SeqIO.to_dict(SeqIO.parse(open(f"{self.outdir}/assembly.fasta", 'r'), "fasta"))
-            for contig in seqs:
-                seqs[contig].seq = seqs[contig].seq.upper()
-                contigs[contig] = Contig(contig, seqs[contig].seq)
-        except IOError:
-            log.error(f"Can't load assembly from file {self.assemblyfile}!")
-            sys.exit()
-
         if os.path.exists(f"{self.outdir}/assembly.fasta.fai"):
            log.info(f"Will use existing {self.outdir}/assembly.fasta.fai")
         else:
@@ -68,6 +59,18 @@ class Assembly:
             except:
                 log.error(f"Can't index assembly!")
                 sys.exit()
+
+    def load_genome(self):
+        contigs = []
+        try:
+            log.info(f"Loading genome assembly")
+            for rec in SeqIO.parse(open(f"{self.outdir}/assembly.fasta", 'r'), "fasta"):
+                rec.seq = rec.seq.upper()
+                contigs.append(Contig(rec.id, rec.seq, self.outdir))
+        except IOError:
+            log.error(f"Can't load assembly from file {self.assemblyfile}!")
+            sys.exit()
+
 
         return contigs
 
@@ -120,7 +123,7 @@ class Assembly:
         log.info(f"Running mosdepth for {filestub}...")
         
         try:
-            mosdepth(f"-t{self.threads}", "-b1000", \
+            mosdepth(f"-t{self.threads}", "-b1000", "-n", \
                      f"{self.outdir}/{filestub}", \
                      f"{self.outdir}/{filestub}.bam")
         except:
@@ -130,22 +133,30 @@ class Assembly:
     def report(self):
         try:
             with open(f"{self.outdir}/report.txt", 'wt') as reportfile:
-                for contig in self.contigs:
-                    print(f"{contig}\t{self.contigs[contig].report()}", file=reportfile)
+                with Pool(self.threads) as p:
+                    for report in p.map(contig_report, self.contigs):
+                        print(report, file=reportfile)
         except IOError:
             log.error(f"Could not open report file {self.outdir}/report.txt")
 
+# Defining contig report at top level rather than in class so it works with multiprocessing
+def contig_report(contig):
+    return f"{contig.name}\t{len(contig)}\t{contig.depth('reads')}\t{contig.depth('contigs')}"
             
 class Contig:
-    def __init__(self, name, seq):
+    def __init__(self, name, seq, outdir):
         self.name = name
         self.seq = seq
+        self.outdir = outdir
 
     def __len__(self):
         return len(self.seq)
 
-    def report(self):
-        return f"{len(self)}"
+    def depth(self, mapped):
+        depth = []
+        for line in zgrep(f"^{self.name}", f"{self.outdir}/{mapped}_assembly.regions.bed.gz").split('\n')[:-1]:
+            depth.append(float(line.split('\t')[3]))
+        return f"{mean(depth):.1f}"
 
 
 def set_verbosity(verbosity):
