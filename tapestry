@@ -4,8 +4,9 @@ __version__=0.1
 
 import argparse, sys, os, errno
 import logging as log
+from shutil import copyfile
 from Bio import SeqIO
-from plumbum.cmd import minimap2, mosdepth, samtools, head
+from plumbum.cmd import minimap2, mosdepth, samtools, nucmer, head, cut
 
 
 class Assembly:
@@ -22,10 +23,6 @@ class Assembly:
         if self.readfile:
             self.align_reads_to_assembly()
             self.align_contigs_to_assembly()
-            
-            self.count_reads_on_assembly()
-            self.count_contigs_on_assembly()
-
         else:
             log.warning("No read file provided (-r), will skip read metrics")
 
@@ -40,49 +37,96 @@ class Assembly:
                 raise
 
     def load_genome(self):
-        log.info(f"Loading genome assembly {os.path.abspath(self.assemblyfile)}")
         contigs = {}
+
+        if os.path.exists(f"{self.outdir}/assembly.fasta"):
+            log.info(f"Will use existing {self.outdir}/assembly.fasta file")
+        else:
+            try:
+                log.info(f"Copying assembly to {self.outdir}")
+                copyfile(self.assemblyfile, f"{self.outdir}/assembly.fasta") 
+            except:
+                 log.error(f"Can't copy assembly to {self.outdir}")
+                 sys.exit()
+
         try:
-            with open(self.assemblyfile, 'r') as f:
-                seqs = SeqIO.to_dict(SeqIO.parse(f, "fasta"))
-                for contig in seqs:
-                    seqs[contig].seq = seqs[contig].seq.upper()
-                    contigs[contig] = Contig(contig, seqs[contig].seq)
+            log.info(f"Loading genome assembly")
+            seqs = SeqIO.to_dict(SeqIO.parse(open(f"{self.outdir}/assembly.fasta", 'r'), "fasta"))
+            for contig in seqs:
+                seqs[contig].seq = seqs[contig].seq.upper()
+                contigs[contig] = Contig(contig, seqs[contig].seq)
         except IOError:
             log.error(f"Can't load assembly from file {self.assemblyfile}!")
             sys.exit()
+
+        if os.path.exists(f"{self.outdir}/assembly.fasta.fai"):
+           log.info(f"Will use existing {self.outdir}/assembly.fasta.fai")
+        else:
+            try:
+                log.info(f"Indexing assembly")
+                samtools("faidx", f"{self.outdir}/assembly.fasta")
+            except:
+                log.error(f"Can't index assembly!")
+                sys.exit()
 
         return contigs
 
     def align_reads_to_assembly(self):
         if os.path.exists(f"{self.outdir}/reads_assembly.bam"):
             log.info(f"Will use existing {self.outdir}/reads_assembly.bam")
-            return
+        else:
+            log.info(f"Aligning reads {os.path.abspath(self.readfile)} to assembly")
 
-        log.info(f"Aligning reads {os.path.abspath(self.readfile)} to assembly")
-        try:
-            align_reads = minimap2["-xmap-ont", "-a", f"-t{self.threads}", \
-                                   self.assemblyfile, self.readfile] | \
-                          samtools["sort", f"-@{self.threads-1}", \
-                                   f"-o{self.outdir}/reads_assembly.bam"]
-            align_reads()
-            samtools("index", f"-@{self.threads-1}", f"{self.outdir}/reads_assembly.bam")
-        except:
-            log.error("Failed to align {self.readfile} to {self.assemblyfile}")
-            sys.exit()
+            # samtools uses threads-1 because -@ specifies additional threads and defaults to 0
+            try:
+                align_reads = minimap2["-xmap-ont", "-a", f"-t{self.threads}", \
+                                       f"{self.outdir}/assembly.fasta", self.readfile] | \
+                              samtools["sort", f"-@{self.threads-1}", \
+                                       f"-o{self.outdir}/reads_assembly.bam"]
+                align_reads()
+                samtools("index", f"-@{self.threads-1}", f"{self.outdir}/reads_assembly.bam")
+            except:
+                log.error(f"Failed to align {self.readfile} to {self.outdir}/assembly.fasta")
+                sys.exit()
+
+        self.run_mosdepth("reads_assembly")
 
     def align_contigs_to_assembly(self):
-        log.info("Aligning assembly to itself...")
-        pass
+        if os.path.exists(f"{self.outdir}/contigs_assembly.bam"):
+            log.info(f"Will use existing {self.outdir}/contigs_assembly.bam")
+        else:
+            log.info("Aligning assembly to itself...")
+            try:
+                 nucmer(f"-t{self.threads}", f"--sam-short={self.outdir}/contigs_assembly.sam", \
+                        f"{self.outdir}/assembly.fasta", f"{self.outdir}/assembly.fasta")
+                 nucmer_to_bam = samtools["view", f"-ht{self.outdir}/assembly.fasta.fai", \
+                                          f"{self.outdir}/contigs_assembly.sam"] | \
+                                 samtools["sort", f"-@{self.threads-1}", \
+                                          f"-o{self.outdir}/contigs_assembly.bam"]
+                 nucmer_to_bam()
+                 samtools("index", f"-@{self.threads-1}", f"{self.outdir}/contigs_assembly.bam")
+                 os.remove(f"{self.outdir}/contigs_assembly.sam")
+            except:
+                 log.error(f"Failed to align {self.outdir}/assembly.fasta to itself")
+                 sys.exit()
 
-    def count_reads_on_assembly(self):
-        mosdepth(f"-t{self.threads}", "-b1000", \
-                 f"{self.outdir}/reads_assembly", \
-                 f"{self.outdir}/reads_assembly.bam")
+        self.run_mosdepth("contigs_assembly")
 
-    def count_contigs_on_assembly(self):
-        pass
+    def run_mosdepth(self, filestub):
+        if os.path.exists(f"{self.outdir}/{filestub}.regions.bed.gz"):
+            log.info(f"Will use existing {filestub} mosdepth output")
+            return
 
+        log.info(f"Running mosdepth for {filestub}...")
+        
+        try:
+            mosdepth(f"-t{self.threads}", "-b1000", \
+                     f"{self.outdir}/{filestub}", \
+                     f"{self.outdir}/{filestub}.bam")
+        except:
+            log.error(f"Failed to run mosdepth for {self.outdir}/{filestub}.bam")
+            sys.exit()
+    
     def report(self):
         try:
             with open(f"{self.outdir}/report.txt", 'wt') as reportfile:
@@ -117,19 +161,21 @@ def versions(verbosity):
     log.info(f"Tapestry version {__version__}")
     
     log.getLogger().setLevel(log.INFO) # Suppress plumbum DEBUG messages
-    debug = "Dependencies:\n\n"
+    debug = "Dependencies\n"
 
-    debug += f"minimap2\nLocation: {minimap2}\nVersion: {minimap2('--version')}\n"
+    debug += f"minimap2\t{minimap2('--version').rstrip()}\t{minimap2}\n"
 
-    samtools_version = samtools['--version'] | head['-n 1']
-    debug += f"samtools\nLocation: {samtools}\nVersion: {samtools_version()}\n"
+    samtools_version = samtools['--version'] | head['-n 1'] | cut['-d ', '-f2']
+    debug += f"samtools\t{samtools_version().rstrip()}\t{samtools}\n"
     
-    mosdepth_version = mosdepth['-h'] | head['-n 1']
-    debug += f"mosdepth\nLocation: {mosdepth}\nVersion: {mosdepth_version()}\n"
+    mosdepth_version = mosdepth['-h'] | head['-n 1'] | cut['-d ', '-f2']
+    debug += f"mosdepth\t{mosdepth_version().rstrip()}\t{mosdepth}\n"
     
-    set_verbosity(verbosity)
+    debug += f"nucmer\t{nucmer('-V').rstrip()}\t{nucmer}\n" 
 
-    log.debug(debug)
+    set_verbosity(verbosity) # Reset logger now plumbum commands are done
+
+    log.debug(debug.expandtabs(15))
 
 
 def get_args():
@@ -151,6 +197,10 @@ def get_args():
     log.basicConfig(format="%(levelname)s: %(message)s")
 
     set_verbosity(args.verbose)
+
+    if args.threads<1:
+        log.error("Threads must be at least 1")
+        sys.exit()
 
     return args
 
