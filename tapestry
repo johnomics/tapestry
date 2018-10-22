@@ -1,8 +1,11 @@
-#!/usr/bin/env python3.6
+#!/usr/bin/env python3
+
+__version__=0.1
 
 import argparse, sys, os, errno
 import logging as log
 from Bio import SeqIO
+from plumbum.cmd import minimap2, mosdepth, samtools, head
 
 
 class Assembly:
@@ -11,33 +14,15 @@ class Assembly:
         self.readfile = readfile
         self.outdir = outdir
 
-        self.contigs = self.load_genome(assemblyfile)
-        self.align_reads_to_assembly(self.readfile)
-        self.align_reads_to_reads(self.readfile)
         self.setup_output()
 
-    def load_genome(self, assemblyfile):
-        log.info("Loading genome assembly...")
-        contigs = {}
-        try:
-            with open(assemblyfile, 'r') as f:
-                seqs = SeqIO.to_dict(SeqIO.parse(f, "fasta"))
-                for contig in seqs:
-                    seqs[contig].seq = seqs[contig].seq.upper()
-                    contigs[contig] = Contig(contig, seqs[contig].seq)
-        except IOError:
-            log.error("Can't load assembly from file {assemblyfile}!")
-            sys.exit()
+        self.contigs = self.load_genome(assemblyfile)
 
-        return contigs
-
-    def align_reads_to_assembly(self, readfile):
-        log.info("Aligning reads to assembly...")
-        pass
-
-    def align_reads_to_reads(self, readfile):
-        log.info("Aligning reads to reads...")
-        pass
+        if self.readfile:
+            self.align_reads_to_assembly(self.readfile)
+            self.align_reads_to_reads(self.readfile)
+        else:
+            log.warning("No read file provided (-r), will skip read metrics")
 
     def setup_output(self):
         try:
@@ -48,6 +33,38 @@ class Assembly:
                 log.warning(f"Output directory {self.outdir} found, will use existing analysis files if present, but overwrite reports")
             else:
                 raise
+
+    def load_genome(self, assemblyfile):
+        log.info(f"Loading genome assembly {os.path.abspath(self.assemblyfile)}")
+        contigs = {}
+        try:
+            with open(assemblyfile, 'r') as f:
+                seqs = SeqIO.to_dict(SeqIO.parse(f, "fasta"))
+                for contig in seqs:
+                    seqs[contig].seq = seqs[contig].seq.upper()
+                    contigs[contig] = Contig(contig, seqs[contig].seq)
+        except IOError:
+            log.error(f"Can't load assembly from file {assemblyfile}!")
+            sys.exit()
+
+        return contigs
+
+    def align_reads_to_assembly(self, readfile):
+        if os.path.exists(f"{self.outdir}/reads_assembly.bam"):
+            log.info(f"Will use existing {self.outdir}/reads_assembly.bam")
+            return
+
+        log.info(f"Aligning reads {os.path.abspath(self.readfile)} to assembly")
+        try:
+            align_reads = minimap2["-xmap-ont", "-a", self.assemblyfile, self.readfile] | samtools["sort", f"-o{self.outdir}/reads_assembly.bam"]
+            align_reads()
+        except:
+            log.error("Failed to align {self.readfile} to {self.assemblyfile}")
+            sys.exit()
+
+    def align_reads_to_reads(self, readfile):
+        log.info("Aligning reads to reads...")
+        pass
 
     def report(self):
         try:
@@ -70,32 +87,63 @@ class Contig:
         return f"{len(self)}"
 
 
-def get_args():
-    parser = argparse.ArgumentParser(description='''Tapestry: assess genome assembly quality
+def set_verbosity(verbosity):
+    if verbosity == 1:
+        log.getLogger().setLevel(log.INFO)
+    elif verbosity > 1:
+        log.getLogger().setLevel(log.DEBUG)
+    else:
+        log.getLogger().setLevel(log.WARN)
+
+
+def versions(verbosity):
+    log.info(f"Tapestry version {__version__}")
     
-        -a genome assembly FASTA
-        -r reads FASTQ
-        -t threads
-        -o output directory
-        -v verbose''')
+    log.getLogger().setLevel(log.INFO) # Suppress plumbum DEBUG messages
+    debug = "Dependencies:\n\n"
+
+    debug += f"minimap2\nLocation: {minimap2}\nVersion: {minimap2('--version')}\n"
+
+    samtools_version = samtools['--version'] | head['-n 1']
+    debug += f"samtools\nLocation: {samtools}\nVersion: {samtools_version()}\n"
+    
+    mosdepth_version = mosdepth['-h'] | head['-n 1']
+    debug += f"mosdepth\nLocation: {mosdepth}\nVersion: {mosdepth_version()}\n"
+    
+    set_verbosity(verbosity)
+
+    log.debug(debug)
+
+
+def get_args():
+    parser = argparse.ArgumentParser(description="Tapestry: assess genome assembly quality")
 
     parser.add_argument('-a', '--assembly', help="filename of assembly in FASTA format", type=str, required=True)
     parser.add_argument('-r', '--reads', help="filename of reads in gzipped FASTQ format", type=str)
     parser.add_argument('-t', '--threads', help="number of parallel threads to use", type=int, default=1)
     parser.add_argument('-o', '--output', help="directory to write output, default tapestry_output", type=str, default="tapestry_output")
-    parser.add_argument('-v', '--verbose', help="report on progress", action="store_true")
+    parser.add_argument('-v', '--verbose', help="report on progress", action="count", default=0)
+    parser.add_argument('-V', '--version', help="report version number and exit", action="store_true") 
 
     args = parser.parse_args()
-    if args.verbose:
-        log.basicConfig(format="%(levelname)s: %(message)s", level=log.DEBUG)
-    else:
-        log.basicConfig(format="%(levelname)s: %(message)s")
+
+    if args.version:
+        versions(args.verbose)
+        sys.exit()
+
+    log.basicConfig(format="%(levelname)s: %(message)s")
+
+    set_verbosity(args.verbose)
 
     return args
 
 
+
 if __name__ == '__main__':
+
     args = get_args()
+   
+    versions(args.verbose)
 
     assembly = Assembly(args.assembly, args.reads, args.output)
 
