@@ -5,8 +5,8 @@ __version__=0.1
 import argparse, sys, os, errno, gzip, pysam
 import logging as log
 
-import plotly
-import plotly.graph_objs as go
+from plotly.offline import plot
+from plotly.graph_objs import Bar, Layout
 
 from functools import partial
 from shutil import copyfile
@@ -180,6 +180,12 @@ class Assembly:
                         print(report, file=reportfile)
         except IOError:
             log.error(f"Could not open report file {self.outdir}/report.txt")
+
+        plot({
+            "data": [Bar(x=[c.name for c in self.contigs], y=[len(c) for c in self.contigs])],
+            "layout": Layout(title="Contig Lengths")
+        }, auto_open=False, filename=f"{self.outdir}/lengths.html")
+
 
 # Defining contig report at top level rather than in class so it works with multiprocessing
 def contig_report(contig):
