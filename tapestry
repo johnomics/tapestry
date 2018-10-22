@@ -9,18 +9,23 @@ from plumbum.cmd import minimap2, mosdepth, samtools, head
 
 
 class Assembly:
-    def __init__(self, assemblyfile, readfile, outdir):
+    def __init__(self, assemblyfile, readfile, outdir, threads):
         self.assemblyfile = assemblyfile
         self.readfile = readfile
         self.outdir = outdir
+        self.threads = threads
 
         self.setup_output()
 
-        self.contigs = self.load_genome(assemblyfile)
+        self.contigs = self.load_genome()
 
         if self.readfile:
-            self.align_reads_to_assembly(self.readfile)
-            self.align_reads_to_reads(self.readfile)
+            self.align_reads_to_assembly()
+            self.align_contigs_to_assembly()
+            
+            self.count_reads_on_assembly()
+            self.count_contigs_on_assembly()
+
         else:
             log.warning("No read file provided (-r), will skip read metrics")
 
@@ -34,36 +39,48 @@ class Assembly:
             else:
                 raise
 
-    def load_genome(self, assemblyfile):
+    def load_genome(self):
         log.info(f"Loading genome assembly {os.path.abspath(self.assemblyfile)}")
         contigs = {}
         try:
-            with open(assemblyfile, 'r') as f:
+            with open(self.assemblyfile, 'r') as f:
                 seqs = SeqIO.to_dict(SeqIO.parse(f, "fasta"))
                 for contig in seqs:
                     seqs[contig].seq = seqs[contig].seq.upper()
                     contigs[contig] = Contig(contig, seqs[contig].seq)
         except IOError:
-            log.error(f"Can't load assembly from file {assemblyfile}!")
+            log.error(f"Can't load assembly from file {self.assemblyfile}!")
             sys.exit()
 
         return contigs
 
-    def align_reads_to_assembly(self, readfile):
+    def align_reads_to_assembly(self):
         if os.path.exists(f"{self.outdir}/reads_assembly.bam"):
             log.info(f"Will use existing {self.outdir}/reads_assembly.bam")
             return
 
         log.info(f"Aligning reads {os.path.abspath(self.readfile)} to assembly")
         try:
-            align_reads = minimap2["-xmap-ont", "-a", self.assemblyfile, self.readfile] | samtools["sort", f"-o{self.outdir}/reads_assembly.bam"]
+            align_reads = minimap2["-xmap-ont", "-a", f"-t{self.threads}", \
+                                   self.assemblyfile, self.readfile] | \
+                          samtools["sort", f"-@{self.threads-1}", \
+                                   f"-o{self.outdir}/reads_assembly.bam"]
             align_reads()
+            samtools("index", f"-@{self.threads-1}", f"{self.outdir}/reads_assembly.bam")
         except:
             log.error("Failed to align {self.readfile} to {self.assemblyfile}")
             sys.exit()
 
-    def align_reads_to_reads(self, readfile):
-        log.info("Aligning reads to reads...")
+    def align_contigs_to_assembly(self):
+        log.info("Aligning assembly to itself...")
+        pass
+
+    def count_reads_on_assembly(self):
+        mosdepth(f"-t{self.threads}", "-b1000", \
+                 f"{self.outdir}/reads_assembly", \
+                 f"{self.outdir}/reads_assembly.bam")
+
+    def count_contigs_on_assembly(self):
         pass
 
     def report(self):
@@ -142,10 +159,10 @@ def get_args():
 if __name__ == '__main__':
 
     args = get_args()
-   
+
     versions(args.verbose)
 
-    assembly = Assembly(args.assembly, args.reads, args.output)
+    assembly = Assembly(args.assembly, args.reads, args.output, args.threads)
 
     assembly.report()
 
