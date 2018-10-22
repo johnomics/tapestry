@@ -1,37 +1,51 @@
 #!/usr/bin/env python3.6
 
 import argparse, sys, os, errno
+import logging as log
 from Bio import SeqIO
 
+
 class Assembly:
-    def __init__(self, assembly, outdir):
-        self.assembly = assembly
-        self.contigs = self.load_genome(assembly)
+    def __init__(self, assemblyfile, readfile, outdir):
+        self.assemblyfile = assemblyfile
+        self.readfile = readfile
         self.outdir = outdir
+
+        self.contigs = self.load_genome(assemblyfile)
+        self.align_reads_to_assembly(self.readfile)
+        self.align_reads_to_reads(self.readfile)
         self.setup_output()
 
-    def load_genome(self, assembly):
-        print("Loading genome assembly...", file=sys.stderr)
+    def load_genome(self, assemblyfile):
+        log.info("Loading genome assembly...")
         contigs = {}
         try:
-            with open(assembly, 'r') as f:
+            with open(assemblyfile, 'r') as f:
                 seqs = SeqIO.to_dict(SeqIO.parse(f, "fasta"))
                 for contig in seqs:
                     seqs[contig].seq = seqs[contig].seq.upper()
                     contigs[contig] = Contig(contig, seqs[contig].seq)
         except IOError:
-            print(f"Can't load assembly from file {assembly}!")
+            log.error("Can't load assembly from file {assemblyfile}!")
             sys.exit()
 
         return contigs
 
+    def align_reads_to_assembly(self, readfile):
+        log.info("Aligning reads to assembly...")
+        pass
+
+    def align_reads_to_reads(self, readfile):
+        log.info("Aligning reads to reads...")
+        pass
+
     def setup_output(self):
         try:
             os.mkdir(self.outdir)
-            print(f"Created output directory {self.outdir}", file=sys.stderr)
+            log.info(f"Created output directory {self.outdir}")
         except OSError as exc:
             if exc.errno == errno.EEXIST:
-                print(f"Output directory {self.outdir} found, will use existing analysis files if present, but overwrite reports", file=sys.stderr)
+                log.warning(f"Output directory {self.outdir} found, will use existing analysis files if present, but overwrite reports")
             else:
                 raise
 
@@ -41,7 +55,8 @@ class Assembly:
                 for contig in self.contigs:
                     print(f"{contig}\t{self.contigs[contig].report()}", file=reportfile)
         except IOError:
-            print(f"ERROR: Could not open report file {self.outdir}/report.txt")
+            log.error(f"Could not open report file {self.outdir}/report.txt")
+
             
 class Contig:
     def __init__(self, name, seq):
@@ -54,27 +69,36 @@ class Contig:
     def report(self):
         return f"{len(self)}"
 
+
 def get_args():
     parser = argparse.ArgumentParser(description='''Tapestry: assess genome assembly quality
     
         -a genome assembly FASTA
         -r reads FASTQ
         -t threads
-        -o output folder''')
+        -o output directory
+        -v verbose''')
 
-    parser.add_argument('-a', '--assembly', type=str, required=True)
-    parser.add_argument('-r', '--reads', type=str)
-    parser.add_argument('-t', '--threads', type=int, default=1)
-    parser.add_argument('-o', '--output', type=str, default="tapestry_output")
+    parser.add_argument('-a', '--assembly', help="filename of assembly in FASTA format", type=str, required=True)
+    parser.add_argument('-r', '--reads', help="filename of reads in gzipped FASTQ format", type=str)
+    parser.add_argument('-t', '--threads', help="number of parallel threads to use", type=int, default=1)
+    parser.add_argument('-o', '--output', help="directory to write output, default tapestry_output", type=str, default="tapestry_output")
+    parser.add_argument('-v', '--verbose', help="report on progress", action="store_true")
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.verbose:
+        log.basicConfig(format="%(levelname)s: %(message)s", level=log.DEBUG)
+    else:
+        log.basicConfig(format="%(levelname)s: %(message)s")
+
+    return args
 
 
 if __name__ == '__main__':
     args = get_args()
 
-    assembly = Assembly(args.assembly, args.output)
+    assembly = Assembly(args.assembly, args.reads, args.output)
 
     assembly.report()
 
-    print("Done", file=sys.stderr)
+    log.info("Done")
