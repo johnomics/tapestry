@@ -8,9 +8,10 @@ from functools import partial
 from shutil import copyfile
 from multiprocessing import Pool
 from statistics import mean
+from collections import namedtuple
 
 from plotly.offline import plot
-from plotly.graph_objs import Bar, Layout
+from plotly.graph_objs import Bar, Layout, Scatter
 
 from Bio import SeqIO, motifs
 from Bio.Seq import Seq
@@ -191,12 +192,18 @@ class Assembly:
             "layout": Layout(title="Contig Lengths")
         }, auto_open=False, filename=f"{self.outdir}/lengths.html")
 
+        plot({
+            "data": [Scatter(x=[d.end for d in c.read_depths()], y=[d.depth for d in c.read_depths()], name=c.name, mode='lines') for c in self.contigs],
+            "layout": Layout(title="Contig Read Depths")
+        }, auto_open=False, filename=f"{self.outdir}/read_depths.html")
 
 # Defining contig report at top level rather than in class so it works with multiprocessing
 def contig_report(contig):
     tel_start, tel_end = contig.num_telomeres()
-    return f"{contig.name}\t{len(contig)}\t{contig.GC()}\t{contig.depth('reads')}\t{contig.depth('contigs')}\t{contig.num_alignments()}\t{tel_start}\t{tel_end}"
+    return f"{contig.name}\t{len(contig)}\t{contig.GC()}\t{contig.mean_read_depth}\t{contig.mean_contig_depth}\t{contig.num_alignments()}\t{tel_start}\t{tel_end}"
             
+DepthRecord = namedtuple('DepthRecord', 'start, end, depth')
+
 class Contig:
     def __init__(self, rec, telomeres, outdir):
         self.name = rec.id
@@ -211,13 +218,37 @@ class Contig:
     def GC(self):
        return f"{GC(self.rec.seq):.1f}"
 
-    @memoize
-    def depth(self, mapped):
+    def depths(self, mapped):
         depths=[]
         if os.path.exists(f"{self.outdir}/{mapped}_assembly.regions.bed.gz"):
-            for line in zgrep(f"^{self.name}", f"{self.outdir}/{mapped}_assembly.regions.bed.gz").split('\n')[:-1]:
-                depths.append(float(line.split('\t')[3]))
-        return f"{mean(depths):.1f}" if depths else 0
+            for line in zgrep(f"^{self.name}", f"{self.outdir}/{mapped}_assembly.regions.bed.gz").split('\n')[:-1]: # Lose final empty line with :-1
+                contigname, start, end, depth = line.split('\t')
+                depths.append(DepthRecord(start=int(start), end=int(end), depth=float(depth))) 
+        return depths
+
+    def mean_depth(self, mapped):
+        depths = []
+        if mapped == 'reads':
+            depths = self.read_depths
+        elif mapped == 'contigs':
+            depths = self.contig_depths
+        return f"{mean([d.depth for d in depths]):.1f}" if depths else 0
+
+    @memoize
+    def read_depths(self):
+        return self.depths('reads')
+
+    @memoize
+    def contig_depths(self):
+        return self.depths('contigs')
+
+    @memoize
+    def mean_read_depth(self):
+        return mean_depth('reads')
+
+    @memoize
+    def mean_contig_depth(self):
+        return mean_depth('contigs')
 
     @memoize
     def num_alignments(self):
