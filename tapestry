@@ -17,8 +17,10 @@ from Bio import SeqIO, motifs
 from Bio.Seq import Seq
 from Bio.SeqUtils import GC
 
-from plumbum.cmd import minimap2, mosdepth, samtools, nucmer
-from plumbum.cmd import head, cut, zgrep
+from plumbum import local
+from plumbum.cmd import minimap2, mosdepth, samtools
+from plumbum.cmd import head, cut, zgrep, pigz
+paftools = local["paftools.js"]
 
 #http://code.activestate.com/recipes/577452-a-memoize-decorator-for-instance-methods/
 class memoize(object):
@@ -71,11 +73,11 @@ class Assembly:
         self.contigs = self.load_genome()
 
         if self.readfile:
-            self.align_reads_to_assembly()
+            self.align_to_assembly('reads')
         else:
             log.warning("No read file provided (-r), will skip read metrics unless previous analysis files exist")
 
-        self.align_contigs_to_assembly()
+        self.align_to_assembly('contigs')
 
     def setup_output(self):
         try:
@@ -89,7 +91,7 @@ class Assembly:
 
     def prepare_genome(self):
         if os.path.exists(f"{self.outdir}/assembly.fasta"):
-            log.info(f"Will use existing {self.outdir}/assembly.fasta file")
+            log.info(f"Will use existing {self.outdir}/assembly.fasta")
         else:
             try:
                 log.info(f"Copying assembly to {self.outdir}")
@@ -122,53 +124,52 @@ class Assembly:
 
         return contigs
 
-    def align_reads_to_assembly(self):
-        if os.path.exists(f"{self.outdir}/reads_assembly.bam"):
-            log.info(f"Will use existing {self.outdir}/reads_assembly.bam")
+    def make_bam(self, aligntype):
+        if os.path.exists(f"{self.outdir}/{aligntype}_assembly.bam"):
+            log.info(f"Will use existing {self.outdir}/{aligntype}_assembly.bam")
         else:
-            log.info(f"Aligning reads {os.path.abspath(self.readfile)} to assembly")
+            inputfile = x_option = None
+            if aligntype == 'reads':
+                inputfile = os.path.abspath(self.readfile)
+                x_option = 'map-ont'
+            elif aligntype == 'contigs':
+                inputfile = f"{self.outdir}/assembly.fasta"
+                x_option = 'ava-ont'
+            else:
+                log.error(f"Don't know how to align {aligntype}")
+                sys.exit()
+            log.info(f"Aligning {aligntype} inputfile to assembly")
 
             # samtools uses cores-1 because -@ specifies additional cores and defaults to 0
             try:
-                align_reads = minimap2["-xmap-ont", "-a", f"-t{self.cores}", \
-                                       f"{self.outdir}/assembly.fasta", self.readfile] | \
+                align = minimap2[f"-x{x_option}", "-a", f"-t{self.cores}", \
+                                       f"{self.outdir}/assembly.fasta", inputfile] | \
                               samtools["sort", f"-@{self.cores-1}", \
-                                       f"-o{self.outdir}/reads_assembly.bam"]
-                align_reads()
-                samtools("index", f"-@{self.cores-1}", f"{self.outdir}/reads_assembly.bam")
+                                       f"-o{self.outdir}/{aligntype}_assembly.bam"]
+                align()
+                samtools("index", f"-@{self.cores-1}", f"{self.outdir}/{aligntype}_assembly.bam")
             except:
-                log.error(f"Failed to align {self.readfile} to {self.outdir}/assembly.fasta")
+                log.error(f"Failed to align {inputfile} to {self.outdir}/assembly.fasta")
                 sys.exit()
 
-        self.run_mosdepth("reads_assembly")
-
-    def align_contigs_to_assembly(self):
-        if os.path.exists(f"{self.outdir}/contigs_assembly.bam"):
-            log.info(f"Will use existing {self.outdir}/contigs_assembly.bam")
+    def make_paf(self, aligntype):
+        if os.path.exists(f"{self.outdir}/{aligntype}_assembly.paf"):
+            log.info(f"Will use existing {self.outdir}/{aligntype}_assembly.paf.gz")
         else:
-            log.info("Aligning assembly to itself...")
             try:
-                 nucmer(f"-t{self.cores}", f"--sam-short={self.outdir}/contigs_assembly.sam", \
-                        f"{self.outdir}/assembly.fasta", f"{self.outdir}/assembly.fasta")
-                 nucmer_to_bam = samtools["view", f"-ht{self.outdir}/assembly.fasta.fai", \
-                                          f"{self.outdir}/contigs_assembly.sam"] | \
-                                 samtools["sort", f"-@{self.cores-1}", \
-                                          f"-o{self.outdir}/contigs_assembly.bam"]
-                 nucmer_to_bam()
-                 samtools("index", f"-@{self.cores-1}", f"{self.outdir}/contigs_assembly.bam")
-                 os.remove(f"{self.outdir}/contigs_assembly.sam")
+                samtopaf = (samtools["view", "-h", f"{self.outdir}/{aligntype}_assembly.bam"] | \
+                           paftools["sam2paf", "-"] | pigz[f"-p{self.cores}"] > f"{self.outdir}/{aligntype}_assembly.paf.gz")
+                samtopaf()
             except:
-                 log.error(f"Failed to align {self.outdir}/assembly.fasta to itself")
-                 sys.exit()
-
-        self.run_mosdepth("contigs_assembly")
+                log.error(f"Failed to convert {self.outdir}/{aligntype}_assembly.bam to {self.outdir}/{aligntype}_assembly.paf.gz")
+                sys.exit()
 
     def run_mosdepth(self, filestub):
         if os.path.exists(f"{self.outdir}/{filestub}.regions.bed.gz"):
             log.info(f"Will use existing {filestub} mosdepth output")
             return
 
-        log.info(f"Running mosdepth for {filestub}...")
+        log.info(f"Running mosdepth for {filestub}")
         
         try:
             mosdepth(f"-t{self.cores}", "-b1000", "-n", \
@@ -178,6 +179,11 @@ class Assembly:
             log.error(f"Failed to run mosdepth for {self.outdir}/{filestub}.bam")
             sys.exit()
     
+    def align_to_assembly(self, aligntype):
+        self.make_bam(aligntype)
+        self.run_mosdepth(f"{aligntype}_assembly")
+        self.make_paf(aligntype)
+
     def report(self):
         try:
             with open(f"{self.outdir}/report.txt", 'wt') as reportfile:
@@ -286,14 +292,14 @@ def versions(verbosity):
 
     debug += f"minimap2\t{minimap2('--version').rstrip()}\t{minimap2}\n"
 
+    debug += f"paftools\t{paftools('version').rstrip()}\t{paftools}\n"
+
     samtools_version = samtools['--version'] | head['-n 1'] | cut['-d ', '-f2']
     debug += f"samtools\t{samtools_version().rstrip()}\t{samtools}\n"
     
     mosdepth_version = mosdepth['-h'] | head['-n 1'] | cut['-d ', '-f2']
     debug += f"mosdepth\t{mosdepth_version().rstrip()}\t{mosdepth}\n"
     
-    debug += f"nucmer\t{nucmer('-V').rstrip()}\t{nucmer}\n" 
-
     set_verbosity(verbosity) # Reset logger now plumbum commands are done
 
     log.debug(debug.expandtabs(15))
@@ -302,8 +308,8 @@ def versions(verbosity):
 def get_args():
     parser = argparse.ArgumentParser(description="Tapestry: assess genome assembly quality")
 
-    parser.add_argument('-a', '--assembly', help="filename of assembly in FASTA format", type=str, required=True)
-    parser.add_argument('-r', '--reads', help="filename of reads in gzipped FASTQ format", type=str)
+    parser.add_argument('-a', '--assembly', help="filename of assembly in FASTA format", type=str)
+    parser.add_argument('-r', '--reads', help="filename of reads in FASTQ format (can be gzipped)", type=str)
     parser.add_argument('-t', '--telomere', help="telomere sequence to search for", type=str, action='append', nargs='+')
     parser.add_argument('-c', '--cores', help="number of parallel cores to use", type=int, default=1)
     parser.add_argument('-o', '--output', help="directory to write output, default tapestry_output", type=str, default="tapestry_output")
@@ -313,12 +319,17 @@ def get_args():
     args = parser.parse_args()
 
     if args.version:
-        versions(args.verbose)
+        set_verbosity(2)
+        versions(2)
         sys.exit()
 
     log.basicConfig(format="%(levelname)s: %(message)s")
 
     set_verbosity(args.verbose)
+
+    if not args.assembly:
+        log.error("Assembly file in FASTA format is required (-a, --assembly)")
+        sys.exit()
 
     if args.cores<1:
         log.error("Must specify at least one core")
