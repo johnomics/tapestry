@@ -2,7 +2,7 @@
 
 __version__=0.1
 
-import argparse, sys, os, errno, gzip, pysam
+import argparse, sys, os, errno, gzip, itertools, pysam
 import logging as log
 from functools import partial
 from shutil import copyfile
@@ -60,21 +60,41 @@ class memoize(object):
         return res
 
 
+def flatten(l):
+    return list(itertools.chain.from_iterable(l))
+
+
 
 class AssemblyPlot:
+
+    def _assemblyplot(self, name, plotdict):
+        plotfile = f"{self.outdir}/{name}.html"
+        log.debug(f"Making plot {plotfile}")
+        try:
+            plot(plotdict, auto_open=False, filename=plotfile)
+        except:
+            log.error(f"Can't make plot {plotfile}")
+            sys.exit()
+
     def lengthplot(self):
-        plot({
-            "data": [Bar(x=[c.name for c in self.contigs], y=[len(c) for c in self.contigs])],
-            "layout": Layout(title="Contig Lengths")
-        }, auto_open=False, filename=f"{self.outdir}/lengths.html")
+        self._assemblyplot("lengths", {
+                "data": [Bar(x=[c.name for c in self.contigs], y=[len(c) for c in self.contigs])],
+                "layout": Layout(title="Contig Lengths")
+        })
 
     def depthplot(self):
-        plot({
-            "data": [Scatter(x=[d.end for d in c.read_depths()], y=[d.depth for d in c.read_depths()], name=c.name, mode='lines') for c in self.contigs],
-            "layout": Layout(title="Contig Read Depths")
-        }, auto_open=False, filename=f"{self.outdir}/read_depths.html")
+        self._assemblyplot("read_depths", {
+                "data": [Scatter(x=[d.end for d in c.depths('reads')], y=[d.depth for d in c.depths('reads')], name=c.name, mode='lines') for c in self.contigs],
+                "layout": Layout(title="Contig Read Depths")
+        })
 
-
+    def depthplot2(self):
+        xnames = flatten([[c.name] * len(c.depths('reads')) for c in self.contigs])
+        ydepths = flatten([[d.depth for d in c.depths('reads')] for c in self.contigs])
+        self._assemblyplot("contig_read_depths", {
+                "data": [Scatter(x=xnames, y=ydepths, mode="markers", marker=dict(opacity=0.1))],
+                "layout": Layout(title="Contig Read Depths") 
+        })
 
 class Assembly(AssemblyPlot):
     def __init__(self, assemblyfile, readfile, telomeres, outdir, cores):
@@ -143,13 +163,15 @@ class Assembly(AssemblyPlot):
         if os.path.exists(f"{self.outdir}/{aligntype}_assembly.bam"):
             log.info(f"Will use existing {self.outdir}/{aligntype}_assembly.bam")
         else:
-            inputfile = x_option = None
+            inputfile = x_option = dual_option = None
             if aligntype == 'reads':
                 inputfile = os.path.abspath(self.readfile)
                 x_option = 'map-ont'
+                dual_option = 'yes'
             elif aligntype == 'contigs':
                 inputfile = f"{self.outdir}/assembly.fasta"
-                x_option = 'ava-ont'
+                x_option = 'asm5'
+                dual_option = 'no'
             else:
                 log.error(f"Don't know how to align {aligntype}")
                 sys.exit()
@@ -157,7 +179,7 @@ class Assembly(AssemblyPlot):
 
             # samtools uses cores-1 because -@ specifies additional cores and defaults to 0
             try:
-                align = minimap2[f"-x{x_option}", "-a", f"-t{self.cores}", \
+                align = minimap2[f"-x{x_option}", "-a", "-2", f"--dual={dual_option}", f"-t{self.cores}", \
                                        f"{self.outdir}/assembly.fasta", inputfile] | \
                               samtools["sort", f"-@{self.cores-1}", \
                                        f"-o{self.outdir}/{aligntype}_assembly.bam"]
@@ -200,6 +222,7 @@ class Assembly(AssemblyPlot):
         self.make_paf(aligntype)
 
     def report(self):
+        log.info(f"Generating report {self.outdir}/report.txt")
         try:
             with open(f"{self.outdir}/report.txt", 'wt') as reportfile:
                 with Pool(self.cores) as p:
@@ -209,15 +232,17 @@ class Assembly(AssemblyPlot):
             log.error(f"Could not open report file {self.outdir}/report.txt")
 
     def plot(self):
+        log.info(f"Plotting")
         self.lengthplot()
         self.depthplot()
+        self.depthplot2()
 
 
 
 # Defining contig report at top level rather than in class so it works with multiprocessing
 def contig_report(contig):
     tel_start, tel_end = contig.num_telomeres()
-    return f"{contig.name}\t{len(contig)}\t{contig.GC()}\t{contig.mean_read_depth()}\t{contig.mean_contig_depth()}\t{contig.num_alignments()}\t{tel_start}\t{tel_end}"
+    return f"{contig.name}\t{len(contig)}\t{contig.GC()}\t{contig.mean_depth('reads')}\t{contig.mean_depth('contigs')}\t{contig.num_alignments()}\t{tel_start}\t{tel_end}"
             
 DepthRecord = namedtuple('DepthRecord', 'start, end, depth')
 
@@ -235,6 +260,7 @@ class Contig:
     def GC(self):
        return f"{GC(self.rec.seq):.1f}"
 
+    @memoize
     def depths(self, mapped):
         depths=[]
         if os.path.exists(f"{self.outdir}/{mapped}_assembly.regions.bed.gz"):
@@ -243,29 +269,9 @@ class Contig:
                 depths.append(DepthRecord(start=int(start), end=int(end), depth=float(depth))) 
         return depths
 
+    @memoize
     def mean_depth(self, mapped):
-        depths = []
-        if mapped == 'reads':
-            depths = self.read_depths()
-        elif mapped == 'contigs':
-            depths = self.contig_depths()
-        return f"{mean([d.depth for d in depths]):.1f}" if depths else 0
-
-    @memoize
-    def read_depths(self):
-        return self.depths('reads')
-
-    @memoize
-    def contig_depths(self):
-        return self.depths('contigs')
-
-    @memoize
-    def mean_read_depth(self):
-        return self.mean_depth('reads')
-
-    @memoize
-    def mean_contig_depth(self):
-        return self.mean_depth('contigs')
+        return f"{mean([d.depth for d in self.depths(mapped)]):.1f}" if self.depths(mapped) else 0
 
     @memoize
     def num_alignments(self):
@@ -360,8 +366,9 @@ if __name__ == '__main__':
 
     assembly = Assembly(args.assembly, args.reads, args.telomere, args.output, args.cores)
 
+    assembly.plot()
+
     assembly.report()
 
-    assembly.plot()
 
     log.info("Done")
