@@ -60,7 +60,23 @@ class memoize(object):
         return res
 
 
-class Assembly:
+
+class AssemblyPlot:
+    def lengthplot(self):
+        plot({
+            "data": [Bar(x=[c.name for c in self.contigs], y=[len(c) for c in self.contigs])],
+            "layout": Layout(title="Contig Lengths")
+        }, auto_open=False, filename=f"{self.outdir}/lengths.html")
+
+    def depthplot(self):
+        plot({
+            "data": [Scatter(x=[d.end for d in c.read_depths()], y=[d.depth for d in c.read_depths()], name=c.name, mode='lines') for c in self.contigs],
+            "layout": Layout(title="Contig Read Depths")
+        }, auto_open=False, filename=f"{self.outdir}/read_depths.html")
+
+
+
+class Assembly(AssemblyPlot):
     def __init__(self, assemblyfile, readfile, telomeres, outdir, cores):
         self.assemblyfile = assemblyfile
         self.readfile = readfile
@@ -121,7 +137,6 @@ class Assembly:
             log.error(f"Can't load assembly from file {self.assemblyfile}!")
             sys.exit()
 
-
         return contigs
 
     def make_bam(self, aligntype):
@@ -153,7 +168,7 @@ class Assembly:
                 sys.exit()
 
     def make_paf(self, aligntype):
-        if os.path.exists(f"{self.outdir}/{aligntype}_assembly.paf"):
+        if os.path.exists(f"{self.outdir}/{aligntype}_assembly.paf.gz"):
             log.info(f"Will use existing {self.outdir}/{aligntype}_assembly.paf.gz")
         else:
             try:
@@ -193,20 +208,16 @@ class Assembly:
         except IOError:
             log.error(f"Could not open report file {self.outdir}/report.txt")
 
-        plot({
-            "data": [Bar(x=[c.name for c in self.contigs], y=[len(c) for c in self.contigs])],
-            "layout": Layout(title="Contig Lengths")
-        }, auto_open=False, filename=f"{self.outdir}/lengths.html")
+    def plot(self):
+        self.lengthplot()
+        self.depthplot()
 
-        plot({
-            "data": [Scatter(x=[d.end for d in c.read_depths()], y=[d.depth for d in c.read_depths()], name=c.name, mode='lines') for c in self.contigs],
-            "layout": Layout(title="Contig Read Depths")
-        }, auto_open=False, filename=f"{self.outdir}/read_depths.html")
+
 
 # Defining contig report at top level rather than in class so it works with multiprocessing
 def contig_report(contig):
     tel_start, tel_end = contig.num_telomeres()
-    return f"{contig.name}\t{len(contig)}\t{contig.GC()}\t{contig.mean_read_depth}\t{contig.mean_contig_depth}\t{contig.num_alignments()}\t{tel_start}\t{tel_end}"
+    return f"{contig.name}\t{len(contig)}\t{contig.GC()}\t{contig.mean_read_depth()}\t{contig.mean_contig_depth()}\t{contig.num_alignments()}\t{tel_start}\t{tel_end}"
             
 DepthRecord = namedtuple('DepthRecord', 'start, end, depth')
 
@@ -235,9 +246,9 @@ class Contig:
     def mean_depth(self, mapped):
         depths = []
         if mapped == 'reads':
-            depths = self.read_depths
+            depths = self.read_depths()
         elif mapped == 'contigs':
-            depths = self.contig_depths
+            depths = self.contig_depths()
         return f"{mean([d.depth for d in depths]):.1f}" if depths else 0
 
     @memoize
@@ -250,11 +261,11 @@ class Contig:
 
     @memoize
     def mean_read_depth(self):
-        return mean_depth('reads')
+        return self.mean_depth('reads')
 
     @memoize
     def mean_contig_depth(self):
-        return mean_depth('contigs')
+        return self.mean_depth('contigs')
 
     @memoize
     def num_alignments(self):
@@ -274,6 +285,8 @@ class Contig:
                     start_matches += len(list(s.instances.search(self.rec[:1000].seq)))
                     end_matches   += len(list(s.instances.search(self.rec[-1000:].seq)))
         return start_matches, end_matches
+
+
 
 def set_verbosity(verbosity):
     if verbosity == 1:
@@ -348,5 +361,7 @@ if __name__ == '__main__':
     assembly = Assembly(args.assembly, args.reads, args.telomere, args.output, args.cores)
 
     assembly.report()
+
+    assembly.plot()
 
     log.info("Done")
