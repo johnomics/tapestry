@@ -1,56 +1,15 @@
 #!/usr/bin/env python3
 
-import argparse, sys
+import sys
 import logging as log
 
 from Tapestry.Assembly import Assembly
-from Tapestry.dependencies import versions
-from Tapestry.misc import set_verbosity
-
-
-
-def get_args():
-
-    parser = argparse.ArgumentParser(description="Tapestry: assess genome assembly quality")
-
-    parser.add_argument('-a', '--assembly', help="filename of assembly in FASTA format", type=str)
-    parser.add_argument('-r', '--reads', help="filename of reads in FASTQ format (can be gzipped)", type=str)
-    parser.add_argument('-t', '--telomere', help="telomere sequence to search for", type=str, action='append', nargs='+')
-    parser.add_argument('-c', '--cores', help="number of parallel cores to use", type=int, default=1)
-    parser.add_argument('-o', '--output', help="directory to write output, default tapestry_output", type=str, default="tapestry_output")
-    parser.add_argument('-v', '--verbose', help="report on progress", action="count", default=0)
-    parser.add_argument('-V', '--version', help="report version number and exit", action="store_true") 
-
-    args = parser.parse_args()
-
-    # If no arguments, print usage message
-    if len(sys.argv) == 1:
-        parser.print_help()
-        sys.exit()
-
-    if args.version:
-        versions()
-        sys.exit()
-
-    log.basicConfig(format="%(asctime)s %(levelname)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
-
-    set_verbosity(args.verbose)
-
-    if not args.assembly:
-        log.error("Assembly file in FASTA format is required (-a, --assembly)")
-        sys.exit()
-
-    if args.cores<1:
-        log.error("Must specify at least one core")
-        sys.exit()
-
-    return args
-
-
+from Tapestry.tools import versions
+from Tapestry.misc import get_args
 
 if __name__ == '__main__':
 
-    args = get_args()
+    args = get_args(sys.argv[1:]) # Pass in arguments so this function can be unit tested
 
     versions(args.verbose)
 

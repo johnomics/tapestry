@@ -7,6 +7,8 @@ from Bio.SeqUtils import GC
 
 from .misc import memoize
 
+from .misc import zgrep
+
 # Defining contig report at top level rather than in class so it works with multiprocessing
 def contig_report(contig):
     tel_start, tel_end = contig.num_telomeres()

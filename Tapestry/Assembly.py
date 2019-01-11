@@ -6,11 +6,11 @@ from multiprocessing import Pool
 from Bio import SeqIO, motifs
 from Bio.Seq import Seq
 
-from plumbum.cmd import minimap2, mosdepth, samtools
-
 from .AssemblyPlot import AssemblyPlot
 from .Contig import Contig, contig_report
 from .misc import flatten
+
+from .misc import minimap2, samtools, paftools
 
 class Assembly(AssemblyPlot):
     def __init__(self, assemblyfile, readfile, telomeres, outdir, cores):
