@@ -1,342 +1,16 @@
 #!/usr/bin/env python3
 
-__version__=0.1
-
-import argparse, sys, os, errno, gzip, itertools, pysam
+import argparse, sys
 import logging as log
-from functools import partial
-from shutil import copyfile
-from multiprocessing import Pool
-from statistics import mean
-from collections import namedtuple
 
-from plotly.offline import plot
-from plotly.graph_objs import Bar, Layout, Scatter
+from Tapestry.Assembly import Assembly
+from Tapestry.dependencies import versions
+from Tapestry.misc import set_verbosity
 
-from Bio import SeqIO, motifs
-from Bio.Seq import Seq
-from Bio.SeqUtils import GC
-
-from plumbum import local
-from plumbum.cmd import minimap2, mosdepth, samtools
-from plumbum.cmd import head, cut, zgrep, pigz
-paftools = local["paftools.js"]
-
-#http://code.activestate.com/recipes/577452-a-memoize-decorator-for-instance-methods/
-class memoize(object):
-    """cache the return value of a method
-    
-    This class is meant to be used as a decorator of methods. The return value
-    from a given method invocation will be cached on the instance whose method
-    was invoked. All arguments passed to a method decorated with memoize must
-    be hashable.
-    
-    If a memoized method is invoked directly on its class the result will not
-    be cached. Instead the method will be invoked like a static method:
-    class Obj(object):
-        @memoize
-        def add_to(self, arg):
-            return self + arg
-    Obj.add_to(1) # not enough arguments
-    Obj.add_to(1, 2) # returns 3, result is not cached
-    """
-    def __init__(self, func):
-        self.func = func
-    def __get__(self, obj, objtype=None):
-        if obj is None:
-            return self.func
-        return partial(self, obj)
-    def __call__(self, *args, **kw):
-        obj = args[0]
-        try:
-            cache = obj.__cache
-        except AttributeError:
-            cache = obj.__cache = {}
-        key = (self.func, args[1:], frozenset(kw.items()))
-        try:
-            res = cache[key]
-        except KeyError:
-            res = cache[key] = self.func(*args, **kw)
-        return res
-
-
-def flatten(l):
-    return list(itertools.chain.from_iterable(l))
-
-
-
-class AssemblyPlot:
-
-    def _assemblyplot(self, name, plotobj):
-        plotfile = f"{self.outdir}/{name}.html"
-        log.debug(f"Making plot {plotfile}")
-        try:
-            plot(plotobj, auto_open=False, filename=plotfile)
-        except:
-            log.error(f"Can't make plot {plotfile}")
-            sys.exit()
-
-    def lengthplot(self):
-        self._assemblyplot("lengths", {
-                "data": [Bar(x=[c.name for c in self.contigs], y=[len(c) for c in self.contigs])],
-                "layout": Layout(title="Contig Lengths")
-        })
-
-    def depthplot_full(self):
-        self._assemblyplot("read_depths_full", {
-                "data": [Scatter(x=[d.end for d in c.depths('reads')], y=[d.depth for d in c.depths('reads')], name=c.name, mode='lines') for c in self.contigs],
-                "layout": Layout(title="Contig Read Depths")
-        })
-
-    def depthplot_summary(self):
-        xnames     = flatten([[c.name]    * len(c.depths('reads')) for c in self.contigs])
-        ydepths    = flatten([[d.depth for d in c.depths('reads')] for c in self.contigs])
-
-        self._assemblyplot("read_depths_summary", {
-                "data": [Scatter(x=xnames, y=ydepths, mode="markers", marker=dict(opacity=0.1))],
-                "layout": Layout(title="Contig Read Depth Summary", shapes=[
-                    {'type':'line', 'x0':xnames[0], 'x1':xnames[-1], 'y0':self.median_depth, 'y1':self.median_depth},
-                    {'type':'line', 'x0':xnames[0], 'x1':xnames[-1], 'y0':self.median_depth*2, 'y1':self.median_depth*2},
-                    {'type':'line', 'x0':xnames[0], 'x1':xnames[-1], 'y0':self.median_depth/2, 'y1':self.median_depth/2}
-                ]) 
-        })
-
-
-
-class Assembly(AssemblyPlot):
-    def __init__(self, assemblyfile, readfile, telomeres, outdir, cores):
-        self.assemblyfile = assemblyfile
-        self.readfile = readfile
-        self.telomeres = [motifs.create([Seq(t[0])]) for t in telomeres] if telomeres else None
-        self.outdir = outdir
-        self.cores = cores
-
-        self.setup_output()
-        self.prepare_genome()
-        self.contigs = self.load_genome()
-
-        if self.readfile:
-            self.align_to_assembly('reads')
-        else:
-            log.warning("No read file provided (-r), will skip read metrics unless previous analysis files exist")
-
-        self.align_to_assembly('contigs')
-
-        self.calculate_stats()
-
-    def setup_output(self):
-        try:
-            os.mkdir(self.outdir)
-            log.info(f"Created output directory {self.outdir}")
-        except OSError as exc:
-            if exc.errno == errno.EEXIST:
-                log.warning(f"Output directory {self.outdir} found, will use existing analysis files if present, but overwrite reports")
-            else:
-                raise
-
-    def prepare_genome(self):
-        if os.path.exists(f"{self.outdir}/assembly.fasta"):
-            log.info(f"Will use existing {self.outdir}/assembly.fasta")
-        else:
-            try:
-                log.info(f"Copying assembly to {self.outdir}")
-                copyfile(self.assemblyfile, f"{self.outdir}/assembly.fasta") 
-            except:
-                 log.error(f"Can't copy assembly to {self.outdir}")
-                 sys.exit()
-
-        if os.path.exists(f"{self.outdir}/assembly.fasta.fai"):
-           log.info(f"Will use existing {self.outdir}/assembly.fasta.fai")
-        else:
-            try:
-                log.info(f"Indexing assembly")
-                samtools("faidx", f"{self.outdir}/assembly.fasta")
-            except:
-                log.error(f"Can't index assembly!")
-                sys.exit()
-
-    def load_genome(self):
-        contigs = []
-        try:
-            log.info(f"Loading genome assembly")
-            for rec in SeqIO.parse(open(f"{self.outdir}/assembly.fasta", 'r'), "fasta"):
-                rec.seq = rec.seq.upper()
-                contigs.append(Contig(rec, self.telomeres, self.outdir))
-                contigs.sort(key=lambda x:len(x), reverse=True)
-        except IOError:
-            log.error(f"Can't load assembly from file {self.assemblyfile}!")
-            sys.exit()
-
-        return contigs
-
-    def make_bam(self, aligntype):
-        if os.path.exists(f"{self.outdir}/{aligntype}_assembly.bam"):
-            log.info(f"Will use existing {self.outdir}/{aligntype}_assembly.bam")
-        else:
-            inputfile = x_option = None
-            if aligntype == 'reads':
-                inputfile = os.path.abspath(self.readfile)
-                x_option = 'map-ont'
-            elif aligntype == 'contigs':
-                inputfile = f"{self.outdir}/assembly.fasta"
-                x_option = 'ava-ont'
-            else:
-                log.error(f"Don't know how to align {aligntype}")
-                sys.exit()
-            log.info(f"Aligning {aligntype} inputfile to assembly")
-
-            # samtools uses cores-1 because -@ specifies additional cores and defaults to 0
-            try:
-                align = minimap2[f"-x{x_option}", "-a", "-2", f"-t{self.cores}", \
-                                       f"{self.outdir}/assembly.fasta", inputfile] | \
-                              samtools["sort", f"-@{self.cores-1}", \
-                                       f"-o{self.outdir}/{aligntype}_assembly.bam"]
-                align()
-                samtools("index", f"-@{self.cores-1}", f"{self.outdir}/{aligntype}_assembly.bam")
-            except:
-                log.error(f"Failed to align {inputfile} to {self.outdir}/assembly.fasta")
-                sys.exit()
-
-    def make_paf(self, aligntype):
-        if os.path.exists(f"{self.outdir}/{aligntype}_assembly.paf.gz"):
-            log.info(f"Will use existing {self.outdir}/{aligntype}_assembly.paf.gz")
-        else:
-            try:
-                samtopaf = (samtools["view", "-h", f"{self.outdir}/{aligntype}_assembly.bam"] | \
-                           paftools["sam2paf", "-"] | pigz[f"-p{self.cores}"] > f"{self.outdir}/{aligntype}_assembly.paf.gz")
-                samtopaf()
-            except:
-                log.error(f"Failed to convert {self.outdir}/{aligntype}_assembly.bam to {self.outdir}/{aligntype}_assembly.paf.gz")
-                sys.exit()
-
-    def run_mosdepth(self, filestub):
-        if os.path.exists(f"{self.outdir}/{filestub}.regions.bed.gz"):
-            log.info(f"Will use existing {filestub} mosdepth output")
-            return
-
-        log.info(f"Running mosdepth for {filestub}")
-        
-        try:
-            mosdepth(f"-t{self.cores}", "-b1000", "-n", \
-                     f"{self.outdir}/{filestub}", \
-                     f"{self.outdir}/{filestub}.bam")
-        except:
-            log.error(f"Failed to run mosdepth for {self.outdir}/{filestub}.bam")
-            sys.exit()
-    
-    def align_to_assembly(self, aligntype):
-        self.make_bam(aligntype)
-        self.run_mosdepth(f"{aligntype}_assembly")
-        self.make_paf(aligntype)
-
-    def calculate_stats(self):
-        depths = flatten([[d.depth for d in c.depths('reads')] for c in self.contigs])
-        self.median_depth = depths[int(len(depths)/2)]
-
-    def report(self):
-        log.info(f"Generating report {self.outdir}/report.txt")
-        try:
-            with open(f"{self.outdir}/report.txt", 'wt') as reportfile:
-                with Pool(self.cores) as p:
-                    for report in p.map(contig_report, self.contigs):
-                        print(report, file=reportfile)
-        except IOError:
-            log.error(f"Could not open report file {self.outdir}/report.txt")
-
-    def plot(self):
-        log.info(f"Plotting")
-        self.lengthplot()
-        self.depthplot_full()
-        self.depthplot_summary()
-
-
-
-# Defining contig report at top level rather than in class so it works with multiprocessing
-def contig_report(contig):
-    tel_start, tel_end = contig.num_telomeres()
-    return f"{contig.name}\t{len(contig)}\t{contig.GC()}\t{contig.mean_depth('reads')}\t{contig.mean_depth('contigs')}\t{contig.num_alignments()}\t{tel_start}\t{tel_end}"
-            
-DepthRecord = namedtuple('DepthRecord', 'start, end, depth')
-
-class Contig:
-    def __init__(self, rec, telomeres, outdir):
-        self.name = rec.id
-        self.rec = rec
-        self.telomeres = telomeres
-        self.outdir = outdir
-
-    def __len__(self):
-        return len(self.rec.seq)
-
-    @memoize
-    def GC(self):
-       return f"{GC(self.rec.seq):.1f}"
-
-    @memoize
-    def depths(self, mapped):
-        depths=[]
-        if os.path.exists(f"{self.outdir}/{mapped}_assembly.regions.bed.gz"):
-            for line in zgrep(f"^{self.name}", f"{self.outdir}/{mapped}_assembly.regions.bed.gz").split('\n')[:-1]: # Lose final empty line with :-1
-                contigname, start, end, depth = line.split('\t')
-                depths.append(DepthRecord(start=int(start), end=int(end), depth=float(depth))) 
-        return depths
-
-    @memoize
-    def mean_depth(self, mapped):
-        return f"{mean([d.depth for d in self.depths(mapped)]):.1f}" if self.depths(mapped) else 0
-
-    @memoize
-    def num_alignments(self):
-        alignments=0
-        if os.path.exists(f"{self.outdir}/reads_assembly.bam"):
-            bam = pysam.AlignmentFile(f"{self.outdir}/reads_assembly.bam", 'rb')
-            for aln in bam.fetch(self.name):
-                alignments += 1
-        return alignments
-
-    @memoize
-    def num_telomeres(self):
-        start_matches = end_matches = 0
-        if self.telomeres:
-            for t in self.telomeres:
-                for s in t, t.reverse_complement():
-                    start_matches += len(list(s.instances.search(self.rec[:1000].seq)))
-                    end_matches   += len(list(s.instances.search(self.rec[-1000:].seq)))
-        return start_matches, end_matches
-
-
-
-def set_verbosity(verbosity):
-    if verbosity == 1:
-        log.getLogger().setLevel(log.INFO)
-    elif verbosity > 1:
-        log.getLogger().setLevel(log.DEBUG)
-    else:
-        log.getLogger().setLevel(log.WARN)
-
-
-def versions(verbosity):
-    log.info(f"Tapestry version {__version__}")
-    
-    log.getLogger().setLevel(log.INFO) # Suppress plumbum DEBUG messages
-    debug = "Dependencies\n"
-
-    debug += f"minimap2\t{minimap2('--version').rstrip()}\t{minimap2}\n"
-
-    debug += f"paftools\t{paftools('version').rstrip()}\t{paftools}\n"
-
-    samtools_version = samtools['--version'] | head['-n 1'] | cut['-d ', '-f2']
-    debug += f"samtools\t{samtools_version().rstrip()}\t{samtools}\n"
-    
-    mosdepth_version = mosdepth['-h'] | head['-n 1'] | cut['-d ', '-f2']
-    debug += f"mosdepth\t{mosdepth_version().rstrip()}\t{mosdepth}\n"
-    
-    set_verbosity(verbosity) # Reset logger now plumbum commands are done
-
-    log.debug(debug.expandtabs(15))
 
 
 def get_args():
+
     parser = argparse.ArgumentParser(description="Tapestry: assess genome assembly quality")
 
     parser.add_argument('-a', '--assembly', help="filename of assembly in FASTA format", type=str)
@@ -349,12 +23,16 @@ def get_args():
 
     args = parser.parse_args()
 
-    if args.version:
-        set_verbosity(2)
-        versions(2)
+    # If no arguments, print usage message
+    if len(sys.argv) == 1:
+        parser.print_help()
         sys.exit()
 
-    log.basicConfig(format="%(levelname)s: %(message)s")
+    if args.version:
+        versions()
+        sys.exit()
+
+    log.basicConfig(format="%(asctime)s %(levelname)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 
     set_verbosity(args.verbose)
 
@@ -381,6 +59,5 @@ if __name__ == '__main__':
     assembly.plot()
 
     assembly.report()
-
 
     log.info("Done")
