@@ -1,3 +1,5 @@
+import logging as log
+
 from plotly.offline import plot
 from plotly.graph_objs import Bar, Layout, Scatter
 

@@ -4,8 +4,7 @@ import sys
 import logging as log
 
 from Tapestry.Assembly import Assembly
-from Tapestry.tools import versions
-from Tapestry.misc import get_args
+from Tapestry.misc import get_args, versions
 
 if __name__ == '__main__':
 

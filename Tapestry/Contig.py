@@ -1,4 +1,4 @@
-import pysam
+import os, pysam
 
 from collections import namedtuple
 from statistics import mean

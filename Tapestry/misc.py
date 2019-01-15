@@ -12,6 +12,7 @@ tools = {'paftools':'paftools.js',
          'mosdepth':'mosdepth', 
          'samtools':'samtools', 
          'zgrep':'zgrep', 
+         'pigz':'pigz',
          'head':'head', 
          'cut':'cut'}
 
@@ -82,9 +83,15 @@ def versions(verbosity=2):
 
     debug = "Dependencies\n"
 
-    debug += f"minimap2\t{minimap2('--version').rstrip()}\t{minimap2}\n"
+    if 'minimap2' in globals():
+        debug += f"minimap2\t{minimap2('--version').rstrip()}\t{minimap2}\n"
+    else:
+        debug += f"minimap2\tMISSING\n"
 
-    debug += f"paftools\t{paftools('version').rstrip()}\t{paftools}\n"
+    if 'paftools' in globals():
+        debug += f"paftools\t{paftools('version').rstrip()}\t{paftools}\n"
+    else:
+        debug += f"paftools\tMISSING\n"
 
     samtools_version = samtools['--version'] | head['-n 1'] | cut['-d ', '-f2']
     debug += f"samtools\t{samtools_version().rstrip()}\t{samtools}\n"

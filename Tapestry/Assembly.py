@@ -10,7 +10,7 @@ from .AssemblyPlot import AssemblyPlot
 from .Contig import Contig, contig_report
 from .misc import flatten
 
-from .misc import minimap2, samtools, paftools
+from .misc import minimap2, samtools, paftools, mosdepth, pigz
 
 class Assembly(AssemblyPlot):
     def __init__(self, assemblyfile, readfile, telomeres, outdir, cores):
@@ -140,7 +140,7 @@ class Assembly(AssemblyPlot):
 
     def calculate_stats(self):
         depths = flatten([[d.depth for d in c.depths('reads')] for c in self.contigs])
-        self.median_depth = depths[int(len(depths)/2)]
+        self.median_depth = depths[int(len(depths)/2)] if depths else 0
 
     def report(self):
         log.info(f"Generating report {self.outdir}/report.txt")
@@ -155,5 +155,6 @@ class Assembly(AssemblyPlot):
     def plot(self):
         log.info(f"Plotting")
         self.lengthplot()
-        self.depthplot_full()
-        self.depthplot_summary()
+        if self.readfile:
+            self.depthplot_full()
+            self.depthplot_summary()
