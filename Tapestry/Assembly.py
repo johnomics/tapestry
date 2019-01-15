@@ -7,7 +7,7 @@ from Bio import SeqIO, motifs
 from Bio.Seq import Seq
 
 from .AssemblyPlot import AssemblyPlot
-from .Contig import Contig, contig_report
+from .Contig import Contig, contig_report, redundancy_report
 from .misc import flatten
 
 from .misc import minimap2, samtools, paftools, mosdepth, pigz
@@ -143,14 +143,14 @@ class Assembly(AssemblyPlot):
         self.median_depth = depths[int(len(depths)/2)] if depths else 0
 
     def report(self):
-        log.info(f"Generating report {self.outdir}/report.txt")
-        try:
-            with open(f"{self.outdir}/report.txt", 'wt') as reportfile:
-                with Pool(self.cores) as p:
-                    for report in p.map(contig_report, self.contigs):
-                        print(report, file=reportfile)
-        except IOError:
-            log.error(f"Could not open report file {self.outdir}/report.txt")
+        log.info(f"Generating reports")
+        for filename, contig_function in [("redundancy", redundancy_report), ("report", contig_report)]:
+            #try:
+            with open(f"{self.outdir}/{filename}.txt", 'wt') as outfile, Pool(self.cores) as p:
+                for contig_output in p.map(contig_function, sorted(self.contigs, reverse=True)):
+                    print(contig_output, file=outfile)
+            #except IOError:
+            #    log.error(f"Could not write output file {self.outdir}/{filename}.txt")
 
     def plot(self):
         log.info(f"Plotting")

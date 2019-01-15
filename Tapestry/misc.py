@@ -54,7 +54,7 @@ def get_args(arglist=[]):
         versions()
         sys.exit()
 
-    log.basicConfig(format="%(asctime)s %(levelname)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+    log.basicConfig(format="%(asctime)s %(levelname)s\t%(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 
     set_verbosity(args.verbose)
 
@@ -118,6 +118,8 @@ def set_verbosity(verbosity):
 def flatten(l):
     return list(itertools.chain.from_iterable(l))
 
+def grep(pattern, filename):
+    return zgrep(pattern, filename, retcode=(0,1)).split('\n')[:-1]
 
 
 #http://code.activestate.com/recipes/577452-a-memoize-decorator-for-instance-methods/
