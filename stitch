@@ -2,13 +2,18 @@
 
 import os, sys, argparse
 import logging as log
-from tapestry.misc import get_stitch_args, versions
 
+from tapestry.stitcher import Stitcher
+from tapestry.misc import get_stitch_args, versions
 
 if __name__ == '__main__':
 
     args = get_stitch_args(sys.argv[1:])
 
     versions(args.verbose)
+
+    stitcher = Stitcher(args.assemblies, args.output, args.cores)
+    
+    stitcher.report()
 
     log.info("Done")

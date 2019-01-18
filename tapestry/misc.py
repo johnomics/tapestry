@@ -1,6 +1,6 @@
 from ._version import __version__
 
-import os, sys, argparse, itertools
+import os, sys, argparse, itertools, errno
 import logging as log
 from functools import partial, lru_cache
 
@@ -90,11 +90,23 @@ def get_stitch_args(arglist=[]):
            ["'-a', '--assemblies', help='tapestry folders', type=str, action='append', nargs='+'",
             "'-o', '--output', help='directory to write output, default stitch_output', type=str, default='stitch_output'"]) 
 
-    if not args.assemblies:
-        log.error("Please specify at least one Tapestry folder to process (-a, --assemblies)")
+    if len(args.assemblies[0]) < 2:
+        log.error("Please specify at least two Tapestry folders to process (-a, --assemblies)")
         sys.exit()
 
     return args
+
+
+def setup_output(outdir):
+    try:
+        os.mkdir(outdir)
+        log.info(f"Created output directory {outdir}")
+    except OSError as exc:
+        if exc.errno == errno.EEXIST:
+            log.warning(f"Output directory {outdir} found, will use existing analysis files if present, but overwrite reports")
+        else:
+            raise
+
 
 
 def versions(verbosity=2):

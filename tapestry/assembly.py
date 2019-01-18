@@ -1,4 +1,4 @@
-import os, sys, errno
+import os, sys
 import logging as log
 from shutil import copyfile
 from multiprocessing import Pool
@@ -10,7 +10,7 @@ from Bio.Seq import Seq
 from .assembly_plot import AssemblyPlot
 from .contig import Contig, process_contig
 
-from .misc import flatten, cached_property
+from .misc import flatten, cached_property, setup_output
 from .misc import minimap2, samtools, paftools, mosdepth, pigz
 
 
@@ -24,7 +24,7 @@ class Assembly(AssemblyPlot):
         self.outdir = outdir
         self.cores = cores
 
-        self.setup_output()
+        setup_output(self.outdir)
         self.prepare_genome()
         self.contigs = self.load_genome()
 
@@ -62,17 +62,6 @@ class Assembly(AssemblyPlot):
     @cached_property
     def unique_pc(self):
         return f"{self.unique_bases/len(self) * 100:.0f}"
-
-
-    def setup_output(self):
-        try:
-            os.mkdir(self.outdir)
-            log.info(f"Created output directory {self.outdir}")
-        except OSError as exc:
-            if exc.errno == errno.EEXIST:
-                log.warning(f"Output directory {self.outdir} found, will use existing analysis files if present, but overwrite reports")
-            else:
-                raise
 
 
     def prepare_genome(self):
