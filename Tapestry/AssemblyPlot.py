@@ -18,19 +18,22 @@ class AssemblyPlot:
 
     def lengthplot(self):
         self._assemblyplot("lengths", {
-                "data": [Bar(x=[c.name for c in self.contigs], y=[len(c) for c in self.contigs])],
+                "data": [Bar(x=[self.contigs[c].name for c in self.contiglist], 
+                             y=[len(self.contigs[c]) for c in self.contiglist])],
                 "layout": Layout(title="Contig Lengths")
         })
 
     def depthplot_full(self):
         self._assemblyplot("read_depths_full", {
-                "data": [Scatter(x=[d.end for d in c.depths('reads')], y=[d.depth for d in c.depths('reads')], name=c.name, mode='lines') for c in self.contigs],
+                "data": [Scatter(x=[d.end for d in self.contigs[c].read_depths],
+                                 y=[d.depth for d in self.contigs[c].read_depths], 
+                                 name=self.contigs[c].name, mode='lines') for c in self.contiglist],
                 "layout": Layout(title="Contig Read Depths")
         })
 
     def depthplot_summary(self):
-        xnames     = flatten([[c.name]    * len(c.depths('reads')) for c in self.contigs])
-        ydepths    = flatten([[d.depth for d in c.depths('reads')] for c in self.contigs])
+        xnames     = flatten([[self.contigs[c].name]    * len(self.contigs[c].read_depths) for c in self.contiglist])
+        ydepths    = flatten([[d.depth for d in self.contigs[c].read_depths] for c in self.contiglist])
 
         self._assemblyplot("read_depths_summary", {
                 "data": [Scatter(x=xnames, y=ydepths, mode="markers", marker=dict(opacity=0.1))],

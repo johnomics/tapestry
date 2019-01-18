@@ -2,17 +2,21 @@ import os, sys, errno
 import logging as log
 from shutil import copyfile
 from multiprocessing import Pool
+from statistics import mean
 
 from Bio import SeqIO, motifs
 from Bio.Seq import Seq
 
 from .AssemblyPlot import AssemblyPlot
-from .Contig import Contig, contig_report, redundancy_report
-from .misc import flatten
+from .Contig import Contig, process_contig
 
+from .misc import flatten, cached_property
 from .misc import minimap2, samtools, paftools, mosdepth, pigz
 
+
+
 class Assembly(AssemblyPlot):
+
     def __init__(self, assemblyfile, readfile, telomeres, outdir, cores):
         self.assemblyfile = assemblyfile
         self.readfile = readfile
@@ -31,7 +35,34 @@ class Assembly(AssemblyPlot):
 
         self.align_to_assembly('contigs')
 
-        self.calculate_stats()
+        self.process_contigs()
+        
+        self.contiglist = sorted(self.contigs, key=lambda c:len(self.contigs[c]), reverse=True)
+
+
+    def __len__(self):
+        return sum([len(self.contigs[c]) for c in self.contigs])
+
+
+    @cached_property
+    def gc(self):
+        return mean([float(self.contigs[c].gc) for c in self.contigs])
+
+
+    @cached_property
+    def median_depth(self):
+        depths = flatten([[d.depth for d in self.contigs[c].depths('reads')] for c in self.contigs])
+        return depths[int(len(depths)/2)] if depths else 0
+
+    @cached_property
+    def unique_bases(self):
+        return sum([self.contigs[c].unique_bases for c in self.contigs])
+
+
+    @cached_property
+    def unique_pc(self):
+        return f"{self.unique_bases/len(self) * 100:.0f}"
+
 
     def setup_output(self):
         try:
@@ -42,6 +73,7 @@ class Assembly(AssemblyPlot):
                 log.warning(f"Output directory {self.outdir} found, will use existing analysis files if present, but overwrite reports")
             else:
                 raise
+
 
     def prepare_genome(self):
         if os.path.exists(f"{self.outdir}/assembly.fasta"):
@@ -64,19 +96,20 @@ class Assembly(AssemblyPlot):
                 log.error(f"Can't index assembly!")
                 sys.exit()
 
+
     def load_genome(self):
-        contigs = []
+        contigs = {}
         try:
             log.info(f"Loading genome assembly")
             for rec in SeqIO.parse(open(f"{self.outdir}/assembly.fasta", 'r'), "fasta"):
                 rec.seq = rec.seq.upper()
-                contigs.append(Contig(rec, self.telomeres, self.outdir))
-                contigs.sort(key=lambda x:len(x), reverse=True)
+                contigs[rec.id] = Contig(rec, self.telomeres, self.outdir)
         except IOError:
             log.error(f"Can't load assembly from file {self.assemblyfile}!")
             sys.exit()
 
         return contigs
+
 
     def make_bam(self, aligntype):
         if os.path.exists(f"{self.outdir}/{aligntype}_assembly.bam"):
@@ -106,6 +139,7 @@ class Assembly(AssemblyPlot):
                 log.error(f"Failed to align {inputfile} to {self.outdir}/assembly.fasta")
                 sys.exit()
 
+
     def make_paf(self, aligntype):
         if os.path.exists(f"{self.outdir}/{aligntype}_assembly.paf.gz"):
             log.info(f"Will use existing {self.outdir}/{aligntype}_assembly.paf.gz")
@@ -117,6 +151,7 @@ class Assembly(AssemblyPlot):
             except:
                 log.error(f"Failed to convert {self.outdir}/{aligntype}_assembly.bam to {self.outdir}/{aligntype}_assembly.paf.gz")
                 sys.exit()
+
 
     def run_mosdepth(self, filestub):
         if os.path.exists(f"{self.outdir}/{filestub}.regions.bed.gz"):
@@ -132,25 +167,46 @@ class Assembly(AssemblyPlot):
         except:
             log.error(f"Failed to run mosdepth for {self.outdir}/{filestub}.bam")
             sys.exit()
-    
+
+
     def align_to_assembly(self, aligntype):
         self.make_bam(aligntype)
         self.run_mosdepth(f"{aligntype}_assembly")
-        self.make_paf(aligntype)
+        if aligntype=="contigs":
+            self.make_paf(aligntype)
 
-    def calculate_stats(self):
-        depths = flatten([[d.depth for d in c.depths('reads')] for c in self.contigs])
-        self.median_depth = depths[int(len(depths)/2)] if depths else 0
+
+    def process_contigs(self):
+        log.info(f"Processing contigs")
+        with Pool(self.cores) as p:
+            for contig in p.map(process_contig, self.contigs.values()):
+                self.contigs[contig.name] = contig
+
+
+    def contig_report(self):
+        log.info(f"Generating contig report")
+
+        try:
+            with open(f"{self.outdir}/contig_report.txt", 'wt') as report_file, \
+                 open(f"{self.outdir}/redundancy.txt", 'wt') as redundancy_file:
+                for contigname in self.contigs:
+                    print(self.contigs[contigname], file=report_file)
+                    print(self.contigs[contigname].redundancy_report(), file=redundancy_file)
+        except IOError:
+            log.error(f"Could not write contig reports")
+
+
+    def assembly_report(self):
+        log.info(f"Generating assembly report")
+        with open(f"{self.outdir}/assembly_report.txt", 'wt') as report_file:
+            print(f"{self.assemblyfile}\t{len(self)}\t{self.gc:.1f}\t{self.median_depth:.0f}\t{self.unique_bases}\t{self.unique_pc}", file=report_file)
+
 
     def report(self):
         log.info(f"Generating reports")
-        for filename, contig_function in [("redundancy", redundancy_report), ("report", contig_report)]:
-            #try:
-            with open(f"{self.outdir}/{filename}.txt", 'wt') as outfile, Pool(self.cores) as p:
-                for contig_output in p.map(contig_function, sorted(self.contigs, reverse=True)):
-                    print(contig_output, file=outfile)
-            #except IOError:
-            #    log.error(f"Could not write output file {self.outdir}/{filename}.txt")
+        self.contig_report()
+        self.assembly_report()
+
 
     def plot(self):
         log.info(f"Plotting")
