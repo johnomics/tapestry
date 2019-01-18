@@ -69,6 +69,34 @@ def get_args(arglist=[], description="", scriptargs=[]):
     return args
 
 
+def get_weave_args(arglist=[]):
+    args = get_args(sys.argv[1:], 
+           "weave: assess quality of one genome assembly",
+           ["'-a', '--assembly', help='filename of assembly in FASTA format', type=str",
+            "'-r', '--reads', help='filename of reads in FASTQ format (can be gzipped)', type=str",
+            "'-t', '--telomere', help='telomere sequence to search for', type=str, action='append', nargs='+'",
+            "'-o', '--output', help='directory to write output, default weave_output', type=str, default='weave_output'"])
+
+    if not args.assembly:
+        log.error("Assembly file in FASTA format is required (-a, --assembly)")
+        sys.exit()
+
+    return args
+
+
+def get_stitch_args(arglist=[]):
+    args = get_args(sys.argv[1:], # Pass in arguments so this function can be unit tested
+           "stitch: compare genome assemblies",
+           ["'-a', '--assemblies', help='tapestry folders', type=str, action='append', nargs='+'",
+            "'-o', '--output', help='directory to write output, default stitch_output', type=str, default='stitch_output'"]) 
+
+    if not args.assemblies:
+        log.error("Please specify at least one Tapestry folder to process (-a, --assemblies)")
+        sys.exit()
+
+    return args
+
+
 def versions(verbosity=2):
 
     log.getLogger().setLevel(log.INFO) # Suppress plumbum DEBUG messages
