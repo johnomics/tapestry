@@ -3,12 +3,13 @@
 import sys
 import logging as log
 
-from Tapestry.Assembly import Assembly
-from Tapestry.misc import get_args, versions
+from tapestry.assembly import Assembly
+from tapestry.misc import get_weave_args, versions
+
 
 if __name__ == '__main__':
 
-    args = get_args(sys.argv[1:]) # Pass in arguments so this function can be unit tested
+    args = get_weave_args(sys.argv[1:]) # Pass in arguments so this function can be unit tested
 
     versions(args.verbose)
 
