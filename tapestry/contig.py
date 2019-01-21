@@ -7,7 +7,7 @@ from intervaltree import Interval, IntervalTree
 
 from Bio.SeqUtils import GC
 
-from .misc import grep
+from .misc import grep, PAF
 
 # Define process_contig at top level rather than in class so it works with multiprocessing
 def process_contig(contig):
@@ -16,23 +16,6 @@ def process_contig(contig):
 
 
 DepthRecord = namedtuple('DepthRecord', 'start, end, depth')
-
-
-class PAF:
-    def __init__(self, pafline):
-        f = pafline.rstrip().split('\t')
-        self.query_name      = f[0]
-        self.query_length    = int(f[1])
-        self.query_start     = int(f[2])
-        self.query_end       = int(f[3])
-        self.strand          = f[4]
-        self.target_name     = f[5]
-        self.target_length   = int(f[6])
-        self.target_start    = int(f[7])
-        self.target_end      = int(f[8])
-        self.matches         = int(f[9])
-        self.block_length    = int(f[10])
-        self.mapping_quality = int(f[11])
 
 
 class Contig:
@@ -120,7 +103,7 @@ class Contig:
             overhang = overhang_function(aln)
             if overhang > 0:
                 overhang_bases += overhang
-        mean_overhang = int(overhang_bases / num_reads)
+        mean_overhang = int(overhang_bases / num_reads) if num_reads > 0 else None
         return mean_overhang
 
 
@@ -157,8 +140,8 @@ class Contig:
                 alignment = PAF(line)
                 if alignment.query_name == self.name:
                     alignments[alignment.query_start:alignment.query_end] = 1
-                if alignment.target_name == self.name:
-                    alignments[alignment.target_start:alignment.target_end] = 1
+                if alignment.subject_name == self.name:
+                    alignments[alignment.subject_start:alignment.subject_end] = 1
         return alignments
 
 

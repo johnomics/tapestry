@@ -1,10 +1,52 @@
-import os, sys
+import os, sys, gzip
 
 import logging as log
+import networkx as nx
 
-from .misc import setup_output
+from collections import defaultdict
+from intervaltree import Interval, IntervalTree
 
+from .misc import setup_output, PAF
 from .misc import minimap2, pigz
+
+def assembly(name):
+    nameparts = name.split('_')
+    assembly = '_'.join(nameparts[:-1])
+    return assembly
+
+
+class ContigReport():
+    def __init__(self, line):
+        f = line.rstrip().split('\t')
+        self.name = f[0]
+        self.length = int(f[1])
+        self.gc = float(f[2])
+        self.median_read_depth = float(f[3])
+        self.mean_read_depth = float(f[4])
+        self.mean_contig_depth = float(f[5])
+        self.tel_start = int(f[6])
+        self.tel_end = int(f[7])
+        self.mean_start_overhang = int(f[8]) if f[8] != 'None' else None
+        self.mean_end_overhang = int(f[9]) if f[9] != 'None' else None
+        self.unique_bases = int(f[10])
+        self.unique_pc = int(f[11])
+    
+    def __repr__(self):
+        report = f"{self.name:30s}"
+        report += f"\t{self.length}"
+        report += f"\t{self.gc}"
+        report += f"\t{self.median_read_depth}"
+        report += f"\t{self.mean_read_depth}"
+        report += f"\t{self.mean_contig_depth}"
+        report += f"\t{self.tel_start}"
+        report += f"\t{self.tel_end}"
+        report += f"\t{self.mean_start_overhang}"
+        report += f"\t{self.mean_end_overhang}"
+        report += f"\t{self.unique_bases}"
+        report += f"\t{self.unique_pc}"
+    
+        return report
+
 
 class Stitcher():
     
@@ -12,75 +54,86 @@ class Stitcher():
         self.assemblies = assemblies[0]
         self.outdir = outdir
         self.cores = cores
+        self.alignments = defaultdict(lambda: defaultdict(IntervalTree))
+        self.contig_graph = nx.Graph()
 
         setup_output(self.outdir)
-        
+
         self.align_all()
+        
+        self.load_contig_reports()
+        
+        self.cluster_contigs()
+
+
+    def run_minimap2(self, assembly_1, assembly_2, outfilename):
+        missing_assembly=False
+        for a in assembly_1, assembly_2:
+            if not os.path.exists(f"{a}/assembly.fasta"):
+                log.error(f"Can't find {a}/assembly.fasta")
+                missing_assembly=True
+        if missing_assembly:
+            sys.exit()
+
+        try:
+            log.info(f"Aligning {assembly_1} to {assembly_2}")
+            align = (minimap2[f"-xmap-ont", "-2", f"-t{self.cores}", \
+                              f"{assembly_1}/assembly.fasta", f"{assembly_2}/assembly.fasta"] | 
+                              pigz[f"-p{self.cores}"] > outfilename)
+            align()
+        except:
+            log.error(f"Failed to align {assembly_1} to {assembly_2}")
+            sys.exit()
+
+
+    def load_alignments(self, outfilename):
+        alignments = defaultdict(lambda: defaultdict(IntervalTree))
+        try:
+            with gzip.open(outfilename, 'rt') as paf:
+                for line in paf:
+                    aln = PAF(line)
+                    for name, length in (aln.query_name, aln.query_length), (aln.subject_name, aln.subject_length):
+                        if name not in self.contig_graph:
+                            self.contig_graph.add_node(name, length=length, assembly=assembly(name))
+                        alignments[aln.query_name][aln.subject_name][aln.query_start:aln.query_end] = None
+                        alignments[aln.subject_name][aln.query_name][aln.subject_start:aln.subject_end] = None
+        except:
+            log.error(f"Failed to load alignments from {outfilename}")
+
+        return alignments
+
+
+    def get_best_hits(self, alignments):
+        best_hits = defaultdict(str)
+        for contig1 in alignments:
+            hit_length = defaultdict(int)
+            for contig2 in alignments[contig1]:
+                alignments[contig1][contig2].merge_overlaps()
+                for a in alignments[contig1][contig2]:
+                    hit_length[contig2] += a.end - a.begin
+            best_hits[contig1] = sorted(hit_length, key=lambda c: hit_length[c], reverse=True)[0]
+        return best_hits
+
+
+    def fill_contig_graph(self, best_hits):
+        for contig in best_hits:
+            best_hit_contig = best_hits[contig]
+            if best_hits[best_hit_contig] == contig:
+                self.contig_graph.add_edge(contig, best_hit_contig)
+
 
     def align_pair(self, assembly_1, assembly_2):
         outfilename = f"{self.outdir}/{assembly_1}.{assembly_2}.paf.gz"
         if os.path.exists(outfilename):
             log.info(f"Will use existing {outfilename}")
         else:
-            missing_assembly=False
-            for a in assembly_1, assembly_2:
-                if not os.path.exists(f"{a}/assembly.fasta"):
-                    log.error(f"Can't find {a}/assembly.fasta")
-                    missing_assembly=True
-            if missing_assembly:
-                sys.exit()
-            
-            try:
-                log.info(f"Aligning {assembly_1} to {assembly_2}")
-                align = (minimap2[f"-xmap-ont", "-2", f"-t{self.cores}", \
-                                  f"{assembly_1}/assembly.fasta", f"{assembly_2}/assembly.fasta"] | 
-                                  pigz[f"-p{self.cores}"] > outfilename)
-                align()
-            except:
-                log.error(f"Failed to align {assembly_1} to {assembly_2}")
-                sys.exit()
+            self.run_minimap2(assembly_1, assembly_2, outfilename)
 
+        alignments = self.load_alignments(outfilename)
 
-    def make_bam(self, aligntype):
-        if os.path.exists(f"{self.outdir}/{aligntype}_assembly.bam"):
-            log.info(f"Will use existing {self.outdir}/{aligntype}_assembly.bam")
-        else:
-            inputfile = x_option = None
-            if aligntype == 'reads':
-                inputfile = os.path.abspath(self.readfile)
-                x_option = 'map-ont'
-            elif aligntype == 'contigs':
-                inputfile = f"{self.outdir}/assembly.fasta"
-                x_option = 'ava-ont'
-            else:
-                log.error(f"Don't know how to align {aligntype}")
-                sys.exit()
-            log.info(f"Aligning {aligntype} {inputfile} to assembly")
+        best_hits = self.get_best_hits(alignments)
 
-            # samtools uses cores-1 because -@ specifies additional cores and defaults to 0
-            try:
-                align = minimap2[f"-x{x_option}", "-a", "-2", f"-t{self.cores}", \
-                                       f"{self.outdir}/assembly.fasta", inputfile] | \
-                              samtools["sort", f"-@{self.cores-1}", \
-                                       f"-o{self.outdir}/{aligntype}_assembly.bam"]
-                align()
-                samtools("index", f"-@{self.cores-1}", f"{self.outdir}/{aligntype}_assembly.bam")
-            except:
-                log.error(f"Failed to align {inputfile} to {self.outdir}/assembly.fasta")
-                sys.exit()
-
-
-    def make_paf(self, aligntype):
-        if os.path.exists(f"{self.outdir}/{aligntype}_assembly.paf.gz"):
-            log.info(f"Will use existing {self.outdir}/{aligntype}_assembly.paf.gz")
-        else:
-            try:
-                samtopaf = (samtools["view", "-h", f"{self.outdir}/{aligntype}_assembly.bam"] | \
-                           paftools["sam2paf", "-"] | pigz[f"-p{self.cores}"] > f"{self.outdir}/{aligntype}_assembly.paf.gz")
-                samtopaf()
-            except:
-                log.error(f"Failed to convert {self.outdir}/{aligntype}_assembly.bam to {self.outdir}/{aligntype}_assembly.paf.gz")
-                sys.exit()
+        self.fill_contig_graph(best_hits)
 
 
     def align_all(self):
@@ -91,8 +144,30 @@ class Stitcher():
                 self.align_pair(assembly_1, assembly_2)
 
 
+    def load_contig_reports(self):
+        self.contigs = {}
+        for assembly in self.assemblies:
+            contig_report = f"{assembly}/contig_report.txt"
+            if not os.path.exists(contig_report):
+                log.error(f"Can't find {contig_report}")
+                sys.exit()
+            with open(contig_report) as report:
+                for line in report:
+                    contig = ContigReport(line)
+                    self.contigs[contig.name] = contig
+
+
+    def cluster_contigs(self):
+        for c in nx.connected_components(self.contig_graph):
+            sub = self.contig_graph.subgraph(c)
+            for contig in sorted(sub.nodes()):
+                print(self.contigs[contig])
+            print()
+
+
     def report(self):
         log.info(f"Generating report")
         with open(f"{self.outdir}/report.txt", 'wt') as report_file:
             for assembly in self.assemblies:
                 print(f"{assembly}", file=report_file)
+        print(f"{self.contig_graph.number_of_nodes()} nodes and {self.contig_graph.number_of_edges()} edges")

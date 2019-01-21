@@ -32,6 +32,23 @@ if failed:
     sys.exit()
 
 
+class PAF:
+    def __init__(self, pafline):
+        f = pafline.rstrip().split('\t')
+        self.query_name      = f[0]
+        self.query_length    = int(f[1])
+        self.query_start     = int(f[2])
+        self.query_end       = int(f[3])
+        self.strand          = f[4]
+        self.subject_name     = f[5]
+        self.subject_length   = int(f[6])
+        self.subject_start    = int(f[7])
+        self.subject_end      = int(f[8])
+        self.matches         = int(f[9])
+        self.block_length    = int(f[10])
+        self.mapping_quality = int(f[11])
+
+
 def get_args(arglist=[], description="", scriptargs=[]):
 
     parser = argparse.ArgumentParser(description=description)
