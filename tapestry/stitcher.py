@@ -15,6 +15,27 @@ def assembly(name):
     return assembly
 
 
+class AssemblyReport():
+    def __init__(self, assembly, line):
+        self.name = assembly
+
+        f = line.rstrip().split('\t')
+        self.file = f[0]
+        self.length = int(f[1])
+        self.gc = float(f[2])
+        self.median_read_depth = int(f[3])
+        self.unique_bases = int(f[4])
+        self.unique_pc = int(f[5])
+
+    def __repr__(self):
+        report  = f"{self.name:30s}"
+        report += f"\t{self.length}"
+        report += f"\t{self.gc}"
+        report += f"\t{self.median_read_depth}"
+        report += f"\t{self.unique_bases}"
+        report += f"\t{self.unique_pc}"
+        return report
+
 class ContigReport():
     def __init__(self, line):
         f = line.rstrip().split('\t')
@@ -32,7 +53,7 @@ class ContigReport():
         self.unique_pc = int(f[11])
     
     def __repr__(self):
-        report = f"{self.name:30s}"
+        report  = f"{self.name:30s}"
         report += f"\t{self.length}"
         report += f"\t{self.gc}"
         report += f"\t{self.median_read_depth}"
@@ -60,9 +81,11 @@ class Stitcher():
         setup_output(self.outdir)
 
         self.align_all()
-        
+
+        self.load_assembly_reports()
+
         self.load_contig_reports()
-        
+
         self.cluster_contigs()
 
 
@@ -144,6 +167,18 @@ class Stitcher():
                 self.align_pair(assembly_1, assembly_2)
 
 
+    def load_assembly_reports(self):
+        self.assembly_reports = {}
+        for assembly in self.assemblies:
+            assembly_report = f"{assembly}/assembly_report.txt"
+            if not os.path.exists(assembly_report):
+                log.error(f"Can't find {assembly_report}")
+                sys.exit()
+            with open(assembly_report) as report:
+                for line in report:
+                    assembly_report = AssemblyReport(assembly, line)
+                    self.assembly_reports[assembly] = assembly_report
+
     def load_contig_reports(self):
         self.contigs = {}
         for assembly in self.assemblies:
@@ -158,16 +193,21 @@ class Stitcher():
 
 
     def cluster_contigs(self):
+        clusters = defaultdict(list)
         for c in nx.connected_components(self.contig_graph):
-            sub = self.contig_graph.subgraph(c)
-            for contig in sorted(sub.nodes()):
-                print(self.contigs[contig])
-            print()
+            contigs = self.contig_graph.subgraph(c).nodes()
+            clusters[len(contigs)].append(contigs)
+        for num_clusters in sorted(clusters, reverse=True):
+            print(num_clusters, len(clusters[num_clusters]))
+            for cluster in clusters[num_clusters]:
+                for contig in sorted(cluster):
+                    print(self.contigs[contig])
+                print()
 
 
     def report(self):
         log.info(f"Generating report")
         with open(f"{self.outdir}/report.txt", 'wt') as report_file:
             for assembly in self.assemblies:
-                print(f"{assembly}", file=report_file)
+                print(self.assembly_reports[assembly], file=report_file)
         print(f"{self.contig_graph.number_of_nodes()} nodes and {self.contig_graph.number_of_edges()} edges")

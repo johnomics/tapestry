@@ -51,7 +51,7 @@ class Assembly(AssemblyPlot):
 
     @cached_property
     def median_depth(self):
-        depths = flatten([[d.depth for d in self.contigs[c].depths('reads')] for c in self.contigs])
+        depths = sorted(flatten([[d.depth for d in self.contigs[c].depths('reads')] for c in self.contigs]))
         return depths[int(len(depths)/2)] if depths else 0
 
     @cached_property

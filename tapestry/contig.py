@@ -92,7 +92,7 @@ class Contig:
 
 
     def median_depth(self, depths):
-        depths = [d.depth for d in depths]
+        depths = sorted([d.depth for d in depths])
         return depths[int(len(depths)/2)] if depths else 0
 
 
