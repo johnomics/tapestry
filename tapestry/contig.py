@@ -1,7 +1,7 @@
 import os, pysam
 
 from collections import namedtuple
-from statistics import mean
+from statistics import mean, median
 
 from intervaltree import Interval, IntervalTree
 
@@ -30,16 +30,16 @@ class Contig:
     def __repr__(self):
         report = f"{self.name}"
         report += f"\t{len(self)}"
-        report += f"\t{self.gc}"
-        report += f"\t{self.median_read_depth}"
-        report += f"\t{self.mean_read_depth}"
-        report += f"\t{self.mean_contig_depth}"
+        report += f"\t{self.gc:.1f}"
+        report += f"\t{self.median_read_depth:.1f}"
+        report += f"\t{self.mean_read_depth:.1f}"
+        report += f"\t{self.mean_contig_depth:.1f}"
         report += f"\t{self.tel_start}"
         report += f"\t{self.tel_end}"
         report += f"\t{self.mean_start_overhang}"
         report += f"\t{self.mean_end_overhang}"
         report += f"\t{self.unique_bases}"
-        report += f"\t{self.unique_pc}"
+        report += f"\t{self.unique_pc:.0f}"
     
         return report
 
@@ -75,7 +75,7 @@ class Contig:
 
 
     def get_gc(self):
-        return f"{GC(self.rec.seq):.1f}"
+        return GC(self.rec.seq)
 
 
     def depths(self, mapped):
@@ -88,12 +88,12 @@ class Contig:
 
 
     def mean_depth(self, depths):
-        return f"{mean([d.depth for d in depths]):.1f}" if depths else 0
+        return mean([d.depth for d in depths]) if depths else 0
 
 
     def median_depth(self, depths):
-        depths = sorted([d.depth for d in depths])
-        return depths[int(len(depths)/2)] if depths else 0
+        depths = [d.depth for d in depths]
+        return median(depths) if depths else 0
 
 
     def get_read_overhang(self, bam, start, end, overhang_function):
@@ -165,4 +165,4 @@ class Contig:
 
 
     def get_unique_pc(self):
-        return f"{self.unique_bases/len(self) * 100:.0f}"
+        return self.unique_bases/len(self) * 100

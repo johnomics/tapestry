@@ -2,7 +2,7 @@ import os, sys
 import logging as log
 from shutil import copyfile
 from multiprocessing import Pool
-from statistics import mean
+from statistics import mean, median
 
 from Bio import SeqIO, motifs
 from Bio.Seq import Seq
@@ -51,8 +51,8 @@ class Assembly(AssemblyPlot):
 
     @cached_property
     def median_depth(self):
-        depths = sorted(flatten([[d.depth for d in self.contigs[c].depths('reads')] for c in self.contigs]))
-        return depths[int(len(depths)/2)] if depths else 0
+        depths = flatten([[d.depth for d in self.contigs[c].depths('reads')] for c in self.contigs])
+        return median(depths) if depths else 0
 
     @cached_property
     def unique_bases(self):
