@@ -1,9 +1,13 @@
 import os, pysam
 
-from collections import namedtuple
+import numpy as np
+
+from collections import namedtuple, defaultdict
 from statistics import mean, median
 
 from intervaltree import Interval, IntervalTree
+
+from sklearn import mixture
 
 from Bio.SeqUtils import GC
 
@@ -14,6 +18,9 @@ def process_contig(contig):
     contig.process()
     return contig
 
+def get_ploidy(contig, median_depth=None):
+    contig.ploidys = contig.get_ploidys(median_depth)
+    return contig
 
 DepthRecord = namedtuple('DepthRecord', 'start, end, depth')
 
@@ -27,7 +34,7 @@ class Contig:
         self.outdir = outdir
 
 
-    def __repr__(self):
+    def report(self, assembly_gc):
         report = f"{self.name}"
         report += f"\t{len(self)}"
         report += f"\t{self.gc:.1f}"
@@ -40,6 +47,9 @@ class Contig:
         report += f"\t{self.mean_end_overhang}"
         report += f"\t{self.unique_bases}"
         report += f"\t{self.unique_pc:.0f}"
+        report += f"\t{self.category(assembly_gc)}"
+        for p in sorted(self.ploidys):
+            report += f"\t{p}:{self.ploidys[p]:.2f}"
     
         return report
 
@@ -50,6 +60,30 @@ class Contig:
 
     def __lt__(self, other):
         return len(self) < len(other)
+
+
+    def category(self, assembly_gc):
+        category=''
+        if abs(self.gc - assembly_gc) < 2:
+            category += 'N'
+        else:
+            category += '-'
+
+        completeness = ''
+        if self.tel_start > 0 and self.mean_start_overhang < 250:
+            completeness += 'L'
+        if self.tel_end   > 0 and self.mean_end_overhang   < 250:
+            completeness += 'R'
+        if completeness == 'LR':
+            completeness = 'C'
+        category += completeness if completeness else '-'
+
+        max_ploidy = sorted(self.ploidys, key=lambda x:self.ploidys[x], reverse=True)[0] if self.ploidys else 0
+        if max_ploidy > 4:
+            max_ploidy = 'R'
+        category += f"{max_ploidy}"
+
+        return category
 
 
     def redundancy_report(self):
@@ -166,3 +200,33 @@ class Contig:
 
     def get_unique_pc(self):
         return self.unique_bases/len(self) * 100
+
+
+    def assign_ploidy(self, mean, depth):
+        ploidy = 0
+        prev_diff = None
+        while True:
+            mean_diff = abs(depth*ploidy - mean)
+            if prev_diff is not None and mean_diff > prev_diff:
+                ploidy -= 1 # Previous ploidy was a better fit
+                break
+            prev_diff = mean_diff
+            ploidy += 1
+        return ploidy
+
+
+    def get_ploidys(self, median_depth, components=10):
+
+        ploidys = defaultdict(float)
+        if len(self.read_depths) < components: # Can't fit model with fewer windows than components
+            return ploidys
+
+        model = mixture.BayesianGaussianMixture(n_components=components, max_iter=1000)
+        depths = np.array([d.depth for d in self.read_depths]).reshape(-1,1)
+        model.fit(depths)
+
+        for i in range(0,len(model.means_)):
+            ploidy = self.assign_ploidy(model.means_[i], median_depth/2)
+            ploidys[ploidy] += model.weights_[i]
+
+        return ploidys

@@ -51,6 +51,8 @@ class ContigReport():
         self.mean_end_overhang = int(f[9]) if f[9] != 'None' else None
         self.unique_bases = int(f[10])
         self.unique_pc = int(f[11])
+        self.category = f[12]
+        self.ploidys = '\t'.join(sorted(f[13:]))
     
     def __repr__(self):
         report  = f"{self.name:30s}"
@@ -65,7 +67,9 @@ class ContigReport():
         report += f"\t{self.mean_end_overhang}"
         report += f"\t{self.unique_bases}"
         report += f"\t{self.unique_pc}"
-    
+        report += f"\t{self.category}"
+        report += f"\t{self.ploidys}"
+
         return report
 
 

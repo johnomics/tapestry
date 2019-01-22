@@ -1,14 +1,16 @@
 import os, sys
 import logging as log
+
 from shutil import copyfile
 from multiprocessing import Pool
+from functools import partial
 from statistics import mean, median
 
 from Bio import SeqIO, motifs
 from Bio.Seq import Seq
 
 from .assembly_plot import AssemblyPlot
-from .contig import Contig, process_contig
+from .contig import Contig, process_contig, get_ploidy
 
 from .misc import flatten, cached_property, setup_output
 from .misc import minimap2, samtools, paftools, mosdepth, pigz
@@ -36,7 +38,9 @@ class Assembly(AssemblyPlot):
         self.align_to_assembly('contigs')
 
         self.process_contigs()
-        
+
+        self.get_ploidys()
+
         self.contiglist = sorted(self.contigs, key=lambda c:len(self.contigs[c]), reverse=True)
 
 
@@ -50,9 +54,14 @@ class Assembly(AssemblyPlot):
 
 
     @cached_property
+    def read_depths(self):
+        return flatten([[d.depth for d in self.contigs[c].depths('reads')] for c in self.contigs])
+
+
+    @cached_property
     def median_depth(self):
-        depths = flatten([[d.depth for d in self.contigs[c].depths('reads')] for c in self.contigs])
-        return median(depths) if depths else 0
+        return median(self.read_depths) if self.read_depths else 0
+
 
     @cached_property
     def unique_bases(self):
@@ -172,6 +181,14 @@ class Assembly(AssemblyPlot):
                 self.contigs[contig.name] = contig
 
 
+    def get_ploidys(self):
+        log.info(f"Calculating ploidy estimates")
+        fit_ploidy = partial(get_ploidy, median_depth=self.median_depth)
+        with Pool(self.cores) as p:
+            for contig in p.map(fit_ploidy, self.contigs.values()):
+                self.contigs[contig.name] = contig
+
+
     def contig_report(self):
         log.info(f"Generating contig report")
 
@@ -179,7 +196,7 @@ class Assembly(AssemblyPlot):
             with open(f"{self.outdir}/contig_report.txt", 'wt') as report_file, \
                  open(f"{self.outdir}/redundancy.txt", 'wt') as redundancy_file:
                 for contigname in self.contigs:
-                    print(self.contigs[contigname], file=report_file)
+                    print(self.contigs[contigname].report(self.gc), file=report_file)
                     print(self.contigs[contigname].redundancy_report(), file=redundancy_file)
         except IOError:
             log.error(f"Could not write contig reports")
