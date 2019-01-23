@@ -40,6 +40,8 @@ class Contig:
         report += f"\t{self.gc:.1f}"
         report += f"\t{self.median_read_depth:.1f}"
         report += f"\t{self.mean_read_depth:.1f}"
+        report += f"\t{self.aligned_primary_pc:.1f}"
+        report += f"\t{self.aligned_all_pc:.1f}"
         report += f"\t{self.mean_contig_depth:.1f}"
         report += f"\t{self.tel_start}"
         report += f"\t{self.tel_end}"
@@ -60,6 +62,29 @@ class Contig:
 
     def __lt__(self, other):
         return len(self) < len(other)
+
+
+    def redundancy_report(self):
+        regions = ""
+        for region in self.region_depths:
+            regions += f"{self.name}\t{region.begin}\t{region.end}\t{region.end-region.begin}\t{region.data}\n"
+        return regions.rstrip()
+
+
+    def process(self):
+        self.gc = self.get_gc()
+        self.contig_depths = self.depths('contigs')
+        self.read_depths = self.depths('reads')
+        self.mean_contig_depth = self.mean_depth(self.contig_depths)
+        self.mean_read_depth = self.mean_depth(self.read_depths)
+        self.median_read_depth = self.median_depth(self.read_depths)
+        self.contig_alignments = self.get_contig_alignments()
+        self.mean_start_overhang, self.mean_end_overhang = self.get_read_overhangs()
+        self.region_depths = self.get_region_depths()
+        self.unique_bases = self.get_unique_bases()
+        self.unique_pc = self.get_unique_pc()
+        self.tel_start, self.tel_end = self.num_telomeres()
+        self.aligned_primary_pc, self.aligned_all_pc = self.get_read_alignment_stats()
 
 
     def category(self, assembly_gc):
@@ -84,28 +109,6 @@ class Contig:
         category += f"{max_ploidy}"
 
         return category
-
-
-    def redundancy_report(self):
-        regions = ""
-        for region in self.region_depths:
-            regions += f"{self.name}\t{region.begin}\t{region.end}\t{region.end-region.begin}\t{region.data}\n"
-        return regions.rstrip()
-
-
-    def process(self):
-        self.gc = self.get_gc()
-        self.contig_depths = self.depths('contigs')
-        self.read_depths = self.depths('reads')
-        self.mean_contig_depth = self.mean_depth(self.contig_depths)
-        self.mean_read_depth = self.mean_depth(self.read_depths)
-        self.median_read_depth = self.median_depth(self.read_depths)
-        self.contig_alignments = self.get_contig_alignments()
-        self.mean_start_overhang, self.mean_end_overhang = self.get_read_overhangs()
-        self.region_depths = self.get_region_depths()
-        self.unique_bases = self.get_unique_bases()
-        self.unique_pc = self.get_unique_pc()
-        self.tel_start, self.tel_end = self.num_telomeres()
 
 
     def get_gc(self):
@@ -164,6 +167,31 @@ class Contig:
                     start_matches += len(list(s.instances.search(self.rec[:1000].seq)))
                     end_matches   += len(list(s.instances.search(self.rec[-1000:].seq)))
         return start_matches, end_matches
+
+
+    def get_read_alignment_stats(self):
+        aligned_primary_bases = all_primary_bases = aligned_non_primary_bases = 0
+
+        if os.path.exists(f"{self.outdir}/reads_assembly.bam"):
+            bam = pysam.AlignmentFile(f"{self.outdir}/reads_assembly.bam", 'rb')
+            for aln in bam.fetch(self.name):
+                if aln.is_unmapped:
+                    continue
+                if aln.is_secondary or aln.is_supplementary:
+                    aligned_non_primary_bases += aln.query_alignment_length
+                    continue
+                all_primary_bases += aln.query_length
+                aligned_primary_bases += aln.query_alignment_length
+
+        all_aligned_bases = aligned_primary_bases + aligned_non_primary_bases
+        
+        aligned_primary_pc = aligned_all_pc = 0
+        if all_primary_bases > 0:
+            aligned_primary_pc = aligned_primary_bases/all_primary_bases*100
+        if all_aligned_bases > 0:
+            aligned_all_pc = aligned_primary_bases/all_aligned_bases*100
+
+        return aligned_primary_pc, aligned_all_pc
 
 
     def get_contig_alignments(self):

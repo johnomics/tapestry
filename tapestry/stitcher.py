@@ -27,14 +27,21 @@ class AssemblyReport():
         self.unique_bases = int(f[4])
         self.unique_pc = int(f[5])
 
+        self.num_contigs = None
+
+
     def __repr__(self):
         report  = f"{self.name:30s}"
+        report += f"\t{self.num_contigs}"
         report += f"\t{self.length}"
         report += f"\t{self.gc}"
         report += f"\t{self.median_read_depth}"
         report += f"\t{self.unique_bases}"
         report += f"\t{self.unique_pc}"
+        for category in sorted(self.categories, key=lambda x:len(self.categories[x]), reverse=True):
+            report += f"\t{category}:{len(self.categories[category])}"
         return report
+
 
 class ContigReport():
     def __init__(self, line):
@@ -44,15 +51,17 @@ class ContigReport():
         self.gc = float(f[2])
         self.median_read_depth = float(f[3])
         self.mean_read_depth = float(f[4])
-        self.mean_contig_depth = float(f[5])
-        self.tel_start = int(f[6])
-        self.tel_end = int(f[7])
-        self.mean_start_overhang = int(f[8]) if f[8] != 'None' else None
-        self.mean_end_overhang = int(f[9]) if f[9] != 'None' else None
-        self.unique_bases = int(f[10])
-        self.unique_pc = int(f[11])
-        self.category = f[12]
-        self.ploidys = '\t'.join(sorted(f[13:]))
+        self.aligned_primary_pc = float(f[5])
+        self.aligned_all_pc = float(f[6])
+        self.mean_contig_depth = float(f[7])
+        self.tel_start = int(f[8])
+        self.tel_end = int(f[9])
+        self.mean_start_overhang = int(f[10]) if f[10] != 'None' else None
+        self.mean_end_overhang = int(f[11]) if f[11] != 'None' else None
+        self.unique_bases = int(f[12])
+        self.unique_pc = int(f[13])
+        self.category = f[14]
+        self.ploidys = '\t'.join(sorted(f[15:]))
     
     def __repr__(self):
         report  = f"{self.name:30s}"
@@ -60,6 +69,8 @@ class ContigReport():
         report += f"\t{self.gc}"
         report += f"\t{self.median_read_depth}"
         report += f"\t{self.mean_read_depth}"
+        report += f"\t{self.aligned_primary_pc}"
+        report += f"\t{self.aligned_all_pc}"
         report += f"\t{self.mean_contig_depth}"
         report += f"\t{self.tel_start}"
         report += f"\t{self.tel_end}"
@@ -86,9 +97,11 @@ class Stitcher():
 
         self.align_all()
 
-        self.load_assembly_reports()
-
         self.load_contig_reports()
+
+        self.load_assembly_reports()
+        
+        self.calculate_assembly_stats()
 
         self.cluster_contigs()
 
@@ -171,6 +184,19 @@ class Stitcher():
                 self.align_pair(assembly_1, assembly_2)
 
 
+    def load_contig_reports(self):
+        self.contigs = {}
+        for assembly in self.assemblies:
+            contig_report = f"{assembly}/contig_report.txt"
+            if not os.path.exists(contig_report):
+                log.error(f"Can't find {contig_report}")
+                sys.exit()
+            with open(contig_report) as report:
+                for line in report:
+                    contig = ContigReport(line)
+                    self.contigs[contig.name] = contig
+
+
     def load_assembly_reports(self):
         self.assembly_reports = {}
         for assembly in self.assemblies:
@@ -183,17 +209,17 @@ class Stitcher():
                     assembly_report = AssemblyReport(assembly, line)
                     self.assembly_reports[assembly] = assembly_report
 
-    def load_contig_reports(self):
-        self.contigs = {}
-        for assembly in self.assemblies:
-            contig_report = f"{assembly}/contig_report.txt"
-            if not os.path.exists(contig_report):
-                log.error(f"Can't find {contig_report}")
-                sys.exit()
-            with open(contig_report) as report:
-                for line in report:
-                    contig = ContigReport(line)
-                    self.contigs[contig.name] = contig
+
+    def calculate_assembly_stats(self):
+        for assembly in self.assembly_reports:
+            num_contigs = 0
+            categories = defaultdict(list)
+            for contig in self.contigs:
+                if assembly in contig:
+                    num_contigs += 1
+                    categories[self.contigs[contig].category].append(contig)
+            self.assembly_reports[assembly].num_contigs = num_contigs
+            self.assembly_reports[assembly].categories = categories
 
 
     def cluster_contigs(self):
