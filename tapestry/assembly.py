@@ -175,7 +175,7 @@ class Assembly(AssemblyPlot):
 
 
     def process_contigs(self):
-        log.info(f"Processing contigs")
+        log.info(f"Processing {len(self.contigs)} contigs")
         with Pool(self.cores) as p:
             for contig in p.map(process_contig, self.contigs.values()):
                 self.contigs[contig.name] = contig

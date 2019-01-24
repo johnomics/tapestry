@@ -1,4 +1,4 @@
-import os, pysam
+import os, re, pysam
 
 import numpy as np
 
@@ -50,8 +50,9 @@ class Contig:
         report += f"\t{self.unique_bases}"
         report += f"\t{self.unique_pc:.0f}"
         report += f"\t{self.category(assembly_gc)}"
-        for p in sorted(self.ploidys):
-            report += f"\t{p}:{self.ploidys[p]:.2f}"
+        report += "\t" + ','.join([f"{p}:{self.ploidys[p]:.2f}" for p in sorted(self.ploidys)])
+        report += "\t" + ','.join(self.left_connectors) if self.left_connectors else '\tNone'
+        report += "\t" + ','.join(self.right_connectors) if self.right_connectors else '\tNone'
     
         return report
 
@@ -84,7 +85,19 @@ class Contig:
         self.unique_bases = self.get_unique_bases()
         self.unique_pc = self.get_unique_pc()
         self.tel_start, self.tel_end = self.num_telomeres()
+        self.left_connectors, self.right_connectors = self.get_connectors()
         self.aligned_primary_pc, self.aligned_all_pc = self.get_read_alignment_stats()
+
+
+    def completeness(self):
+        completeness = ''
+        if self.tel_start > 0 and self.mean_start_overhang < 250:
+            completeness += 'L'
+        if self.tel_end   > 0 and self.mean_end_overhang   < 250:
+            completeness += 'R'
+        if completeness == 'LR':
+            completeness = 'C'
+        return completeness if completeness else '-'
 
 
     def category(self, assembly_gc):
@@ -94,15 +107,8 @@ class Contig:
         else:
             category += '-'
 
-        completeness = ''
-        if self.tel_start > 0 and self.mean_start_overhang < 250:
-            completeness += 'L'
-        if self.tel_end   > 0 and self.mean_end_overhang   < 250:
-            completeness += 'R'
-        if completeness == 'LR':
-            completeness = 'C'
-        category += completeness if completeness else '-'
-
+        category += self.completeness()
+        
         max_ploidy = sorted(self.ploidys, key=lambda x:self.ploidys[x], reverse=True)[0] if self.ploidys else 0
         if max_ploidy > 4:
             max_ploidy = 'R'
@@ -258,3 +264,74 @@ class Contig:
             ploidys[ploidy] += model.weights_[i]
 
         return ploidys
+
+
+    def get_aln_length(self, cigar):
+        # Just gets the Matching bases, which is not accurate but good enough for finding connectors
+        aln_length = 0
+        for cigar_op in re.findall('\d+\w', cigar):
+            if cigar_op.endswith('M'):
+                aln_length += int(cigar_op[:-1])
+        return aln_length
+
+
+    def get_connections(self, bam, region_start, region_end):
+        connections = defaultdict(IntervalTree)
+        region_reads = defaultdict(int)
+
+        if region_start < 0:
+            region_start = 0
+
+        if region_end > len(self):
+            region_end = len(self)
+
+        for aln in bam.fetch(self.name, region_start, region_end):
+            region_reads[aln.query_name] = 1
+            if aln.has_tag('SA'):
+                aln_dir = '-' if aln.is_reverse else '+'
+                aln_connections = aln.get_tag('SA').split(';')[:-1]
+                for c in aln_connections:
+                    contig, start, direction, cigar, *c_args = c.split(',')
+                    if contig == self.name:
+                        continue
+                    aln_length = self.get_aln_length(cigar)
+                    connections[contig][int(start):int(start)+aln_length] = 1
+
+        return connections, region_reads
+
+
+    def get_region_connectors(self, bam, region_start, region_end):
+        connectors = []
+
+        connections, region_reads = self.get_connections(bam, region_start, region_end)
+
+        for contig in connections:
+            connections[contig].merge_overlaps()
+
+            contig_reads = defaultdict(int)
+            for interval in connections[contig]:
+                for interval_aln in bam.fetch(contig, interval.begin, interval.end):
+                    contig_reads[interval_aln.query_name] = 1
+
+            connecting_reads = set(region_reads).intersection(set(contig_reads))
+
+            region_connecting_reads_pc = len(connecting_reads)/len(region_reads)
+            contig_connecting_reads_pc = len(connecting_reads)/len(contig_reads)
+            if region_connecting_reads_pc >= 0.3 and contig_connecting_reads_pc >= 0.1:
+                connectors.append(f"{contig}:{region_connecting_reads_pc:.2f}:{contig_connecting_reads_pc:.2f}")
+
+        return connectors
+
+
+    def get_connectors(self):
+        left_connectors = right_connectors = []
+
+        if os.path.exists(f"{self.outdir}/reads_assembly.bam"):
+            bam = pysam.AlignmentFile(f"{self.outdir}/reads_assembly.bam", 'rb')
+
+            if self.completeness() in ['R', '-']:
+                left_connectors = self.get_region_connectors(bam, 0, 10000)
+            if self.completeness() in ['L', '-']:
+                right_connectors = self.get_region_connectors(bam, len(self)-10000, len(self)-1)
+
+        return left_connectors, right_connectors
