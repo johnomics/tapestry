@@ -35,7 +35,8 @@ class Contig:
 
 
     def report(self, assembly_gc):
-        report = f"{self.name}"
+        report = f"{self.cluster}"
+        report += f"\t{self.name}"
         report += f"\t{len(self)}"
         report += f"\t{self.gc:.1f}"
         report += f"\t{self.median_read_depth:.1f}"
@@ -315,9 +316,9 @@ class Contig:
 
             connecting_reads = set(region_reads).intersection(set(contig_reads))
 
-            region_connecting_reads_pc = len(connecting_reads)/len(region_reads)
-            contig_connecting_reads_pc = len(connecting_reads)/len(contig_reads)
-            if region_connecting_reads_pc >= 0.3 and contig_connecting_reads_pc >= 0.1:
+            region_connecting_reads_pc = len(connecting_reads)/len(region_reads) if region_reads else 0
+            contig_connecting_reads_pc = len(connecting_reads)/len(contig_reads) if contig_reads else 0
+            if region_connecting_reads_pc >= 0.65 and contig_connecting_reads_pc >= 0.1:
                 connectors.append(f"{contig}:{region_connecting_reads_pc:.2f}:{contig_connecting_reads_pc:.2f}")
 
         return connectors

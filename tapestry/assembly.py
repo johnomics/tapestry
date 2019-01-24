@@ -6,6 +6,8 @@ from multiprocessing import Pool
 from functools import partial
 from statistics import mean, median
 
+import networkx as nx
+
 from Bio import SeqIO, motifs
 from Bio.Seq import Seq
 
@@ -40,6 +42,8 @@ class Assembly(AssemblyPlot):
         self.process_contigs()
 
         self.get_ploidys()
+
+        self.cluster_contigs()
 
         self.contiglist = sorted(self.contigs, key=lambda c:len(self.contigs[c]), reverse=True)
 
@@ -189,13 +193,37 @@ class Assembly(AssemblyPlot):
                 self.contigs[contig.name] = contig
 
 
+    def cluster_contigs(self):
+        log.info(f"Clustering contigs")
+        self.assembly_graph = nx.Graph()
+        for contig in self.contigs:
+            self.assembly_graph.add_node(contig)
+
+        for contig in self.contigs:
+            for connector in self.contigs[contig].left_connectors + self.contigs[contig].right_connectors:
+                connector_contig = connector.split(':')[0]
+
+                if self.assembly_graph.has_edge(contig, connector_contig):
+                    self.assembly_graph[contig][connector_contig]['links'] += 1
+                else:
+                    self.assembly_graph.add_edge(contig, connector_contig, links=1)
+
+        self.components = []
+        for c in nx.connected_components(self.assembly_graph):
+            self.components.append(self.assembly_graph.subgraph(c).nodes())
+
+        for i, component in enumerate(sorted(self.components, key=lambda c: len(c), reverse=True)):
+            for contig in sorted(component):
+                self.contigs[contig].cluster = i+1
+
+
     def contig_report(self):
         log.info(f"Generating contig report")
 
         try:
             with open(f"{self.outdir}/contig_report.txt", 'wt') as report_file, \
                  open(f"{self.outdir}/redundancy.txt", 'wt') as redundancy_file:
-                for contigname in self.contigs:
+                for contigname in sorted(self.contigs, key=lambda c: (self.contigs[c].cluster, -len(self.contigs[c]))):
                     print(self.contigs[contigname].report(self.gc), file=report_file)
                     print(self.contigs[contigname].redundancy_report(), file=redundancy_file)
         except IOError:
