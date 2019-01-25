@@ -29,8 +29,7 @@ class Assembly(AssemblyPlot):
         self.cores = cores
 
         setup_output(self.outdir)
-        self.prepare_genome()
-        self.contigs = self.load_genome()
+        self.contigs = self.load_assembly()
 
         if self.readfile:
             self.align_to_assembly('reads')
@@ -77,17 +76,7 @@ class Assembly(AssemblyPlot):
         return f"{self.unique_bases/len(self) * 100:.0f}"
 
 
-    def prepare_genome(self):
-        if os.path.exists(f"{self.outdir}/assembly.fasta"):
-            log.info(f"Will use existing {self.outdir}/assembly.fasta")
-        else:
-            try:
-                log.info(f"Copying assembly to {self.outdir}")
-                copyfile(self.assemblyfile, f"{self.outdir}/assembly.fasta") 
-            except:
-                 log.error(f"Can't copy assembly to {self.outdir}")
-                 sys.exit()
-
+    def index_assembly(self):
         if os.path.exists(f"{self.outdir}/assembly.fasta.fai"):
            log.info(f"Will use existing {self.outdir}/assembly.fasta.fai")
         else:
@@ -99,16 +88,27 @@ class Assembly(AssemblyPlot):
                 sys.exit()
 
 
-    def load_genome(self):
+    def load_assembly(self):
         contigs = {}
+        assembly_filename = f"{self.outdir}/assembly.fasta"
+        write_assembly = False if os.path.exists(assembly_filename) else True
+        if not write_assembly:
+            log.info(f"Will use existing {assembly_filename}")
+
         try:
             log.info(f"Loading genome assembly")
-            for rec in SeqIO.parse(open(f"{self.outdir}/assembly.fasta", 'r'), "fasta"):
+            assembly_out = open(assembly_filename, 'w') if write_assembly else None
+            for rec in SeqIO.parse(open(self.assemblyfile, 'r'), "fasta"):
                 rec.seq = rec.seq.upper()
+                rec.id = f"{self.outdir}_{rec.id}"
                 contigs[rec.id] = Contig(rec, self.telomeres, self.outdir)
+                if write_assembly:
+                    SeqIO.write(rec, assembly_out, "fasta")
         except IOError:
             log.error(f"Can't load assembly from file {self.assemblyfile}!")
             sys.exit()
+
+        self.index_assembly()
 
         return contigs
 
