@@ -11,10 +11,11 @@ import networkx as nx
 from Bio import SeqIO, motifs
 from Bio.Seq import Seq
 
+from jinja2 import Environment, FileSystemLoader
 from .assembly_plot import AssemblyPlot
 from .contig import Contig, process_contig, get_ploidy
 
-from .misc import flatten, cached_property, setup_output
+from .misc import flatten, cached_property, setup_output, include_file, report_folder
 from .misc import minimap2, samtools, paftools, mosdepth, pigz
 
 
@@ -236,10 +237,19 @@ class Assembly(AssemblyPlot):
             print(f"{self.assemblyfile}\t{len(self)}\t{self.gc:.1f}\t{self.median_depth:.0f}\t{self.unique_bases}\t{self.unique_pc}", file=report_file)
 
 
+    def html_report(self):
+        env = Environment(loader=FileSystemLoader(report_folder))
+        env.globals['include_file'] = include_file
+        template = env.get_template('template.html')
+        with open(f"{self.outdir}/tapestry_report.html", 'wt') as html_report:
+            print(template.render(contigs=len(self.contigs)), file=html_report)
+
+
     def report(self):
         log.info(f"Generating reports")
         self.contig_report()
         self.assembly_report()
+        self.html_report()
 
 
     def plot(self):

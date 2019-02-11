@@ -1,6 +1,6 @@
 from ._version import __version__
 
-import os, sys, argparse, itertools, errno
+import os, sys, argparse, itertools, errno, io
 import logging as log
 from functools import partial, lru_cache
 
@@ -31,6 +31,8 @@ if failed:
     print('\n'.join(failed))
     sys.exit()
 
+
+report_folder = 'tapestry/report'
 
 class PAF:
     def __init__(self, pafline):
@@ -173,3 +175,10 @@ def grep(pattern, filename):
 
 def cached_property(function):
     return property(lru_cache()(function))
+
+def include_file(filename):
+    try:
+        with io.open(os.path.join(report_folder, filename), "r", encoding='utf-8') as f:
+            return f.read()
+    except (OSError, IOError) as e:
+        log.error(f"Could not include file '{filename}' in report: {e}")
