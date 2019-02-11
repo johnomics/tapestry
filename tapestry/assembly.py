@@ -1,4 +1,4 @@
-import os, sys
+import os, sys, json
 import logging as log
 
 from shutil import copyfile
@@ -242,7 +242,7 @@ class Assembly(AssemblyPlot):
         env.globals['include_file'] = include_file
         template = env.get_template('template.html')
         with open(f"{self.outdir}/tapestry_report.html", 'wt') as html_report:
-            print(template.render(contigs=len(self.contigs)), file=html_report)
+            print(template.render(contigs=json.dumps([self.contigs[c].json() for c in self.contigs])), file=html_report)
 
 
     def report(self):

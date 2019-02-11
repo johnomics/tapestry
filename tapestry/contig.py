@@ -58,6 +58,17 @@ class Contig:
         return report
 
 
+    def json(self):
+        return {
+            'cluster': self.cluster,
+            'name': self.name,
+            'length': len(self),
+            'gc': self.gc,
+            'tel_start': self.tel_start,
+            'tel_end': self.tel_end
+        }
+
+
     def __len__(self):
         return len(self.rec.seq)
 

@@ -2,14 +2,17 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <meta name="description" content="Tapestry: quality assessment for small genome assemblies">
     <meta name="author" content="Tapestry">
 
     <title>Tapestry Report</title>
 
     <style type="text/css">{{ include_file('static/bootstrap.min.css') }}</style>
+    <style type="text/css">{{ include_file('static/bootstrap-table.min.css') }}</style>
+    <script type="text/javascript">{{ include_file('static/jquery-3.3.1.min.js') }}</script>
     <script type="text/javascript">{{ include_file('static/bootstrap.min.js') }}</script>
+    <script type="text/javascript">{{ include_file('static/bootstrap-table.min.js') }}</script>
     <script type="text/javascript">{{ include_file('static/d3.min.js') }}</script>
 </head>
 
@@ -30,10 +33,29 @@
 
         <div id="contig_report">
             <h2>Contig Report</h2>
-            This assembly has {{ contigs }} contigs.
+            
+            <table id="table" data-sort-name="cluster" data-sort-order="asc">
+              <thead>
+                <tr>
+                  <th data-field="cluster" data-sortable="true">Cluster</th>
+                  <th data-field="name" data-sortable="true">Contig</th>
+                  <th data-field="length" data-sortable="true">Length (bp)</th>
+                  <th data-field="gc" data-sortable="true">GC Content (%)</th>
+                  <th data-field="tel_start" data-sortable="true">Start Telomeres</th>
+                  <th data-field="tel_end" data-sortable="true">End Telomeres</th>
+                </tr>
+              </thead>
+            </table>
+            
+            <script>
+              var $table = $('#table')
+              
+              $(function() {
+                var data = {{ contigs }}
+                $table.bootstrapTable({data: data})
+              })
+            </script>
         </div>
-
     </div>
-
 </body>
 </html>
