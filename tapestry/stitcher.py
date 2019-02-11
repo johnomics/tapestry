@@ -42,27 +42,41 @@ class AssemblyReport():
             report += f"\t{category}:{len(self.categories[category])}"
         return report
 
+def get_connectors(connect_string):
+    connectors = []
+    if connect_string != 'None':
+        connect_strings = connect_string.split(',')
+        for c in connect_strings:
+            connectors.append(c.split(':')[0])
+    return connectors
+
 
 class ContigReport():
     def __init__(self, line):
         f = line.rstrip().split('\t')
-        self.name = f[0]
-        self.length = int(f[1])
-        self.gc = float(f[2])
-        self.median_read_depth = float(f[3])
-        self.mean_read_depth = float(f[4])
-        self.aligned_primary_pc = float(f[5])
-        self.aligned_all_pc = float(f[6])
-        self.mean_contig_depth = float(f[7])
-        self.tel_start = int(f[8])
-        self.tel_end = int(f[9])
-        self.mean_start_overhang = int(f[10]) if f[10] != 'None' else None
-        self.mean_end_overhang = int(f[11]) if f[11] != 'None' else None
-        self.unique_bases = int(f[12])
-        self.unique_pc = int(f[13])
-        self.category = f[14]
-        self.ploidys = '\t'.join(sorted(f[15:]))
-    
+        self.cluster = int(f[0])
+        self.name = f[1]
+        self.length = int(f[2])
+        self.gc = float(f[3])
+        self.median_read_depth = float(f[4])
+        self.mean_read_depth = float(f[5])
+        self.aligned_primary_pc = float(f[6])
+        self.aligned_all_pc = float(f[7])
+        self.mean_contig_depth = float(f[8])
+        self.tel_start = int(f[9])
+        self.tel_end = int(f[10])
+        self.mean_start_overhang = int(f[11]) if f[11] != 'None' else None
+        self.mean_end_overhang = int(f[12]) if f[12] != 'None' else None
+        self.unique_bases = int(f[13])
+        self.unique_pc = int(f[14])
+        self.category = f[15]
+        self.ploidys = f[16]
+        self.left_connector_string = f[17]
+        self.right_connector_string = f[18]
+        self.left_connectors = get_connectors(self.left_connector_string)
+        self.right_connectors = get_connectors(self.right_connector_string)
+
+
     def __repr__(self):
         report  = f"{self.name:30s}"
         report += f"\t{self.length}"
@@ -80,8 +94,14 @@ class ContigReport():
         report += f"\t{self.unique_pc}"
         report += f"\t{self.category}"
         report += f"\t{self.ploidys}"
+        report += f"\t{self.left_connector_string}"
+        report += f"\t{self.right_connector_string}"
 
         return report
+
+
+    def __len__(self):
+        return self.length
 
 
 class Stitcher():
@@ -91,16 +111,16 @@ class Stitcher():
         self.outdir = outdir
         self.cores = cores
         self.alignments = defaultdict(lambda: defaultdict(IntervalTree))
-        self.contig_graph = nx.Graph()
+        self.cluster_graph = nx.Graph()
 
         setup_output(self.outdir)
 
-        self.align_all()
-
         self.load_contig_reports()
 
+        self.align_all()
+
         self.load_assembly_reports()
-        
+
         self.calculate_assembly_stats()
 
         self.cluster_contigs()
@@ -133,8 +153,8 @@ class Stitcher():
                 for line in paf:
                     aln = PAF(line)
                     for name, length in (aln.query_name, aln.query_length), (aln.subject_name, aln.subject_length):
-                        if name not in self.contig_graph:
-                            self.contig_graph.add_node(name, length=length, assembly=assembly(name))
+                        if self.cluster_index[name] not in self.cluster_graph:
+                            self.cluster_graph.add_node(self.cluster_index[name])
                         alignments[aln.query_name][aln.subject_name][aln.query_start:aln.query_end] = None
                         alignments[aln.subject_name][aln.query_name][aln.subject_start:aln.subject_end] = None
         except:
@@ -155,11 +175,11 @@ class Stitcher():
         return best_hits
 
 
-    def fill_contig_graph(self, best_hits):
+    def fill_cluster_graph(self, best_hits):
         for contig in best_hits:
             best_hit_contig = best_hits[contig]
-            if best_hits[best_hit_contig] == contig:
-                self.contig_graph.add_edge(contig, best_hit_contig)
+            if best_hits[best_hit_contig] == contig: # Reciprocal best hits
+                self.cluster_graph.add_edge(self.cluster_index[contig], self.cluster_index[best_hit_contig])
 
 
     def align_pair(self, assembly_1, assembly_2):
@@ -173,7 +193,7 @@ class Stitcher():
 
         best_hits = self.get_best_hits(alignments)
 
-        self.fill_contig_graph(best_hits)
+        self.fill_cluster_graph(best_hits)
 
 
     def align_all(self):
@@ -186,6 +206,8 @@ class Stitcher():
 
     def load_contig_reports(self):
         self.contigs = {}
+        self.clusters = defaultdict(lambda: defaultdict(list))
+        self.cluster_index = defaultdict(int)
         for assembly in self.assemblies:
             contig_report = f"{assembly}/contig_report.txt"
             if not os.path.exists(contig_report):
@@ -195,6 +217,8 @@ class Stitcher():
                 for line in report:
                     contig = ContigReport(line)
                     self.contigs[contig.name] = contig
+                    self.clusters[assembly][contig.cluster].append(contig.name)
+                    self.cluster_index[contig.name] = f"{assembly}_{contig.cluster}"
 
 
     def load_assembly_reports(self):
@@ -223,16 +247,20 @@ class Stitcher():
 
 
     def cluster_contigs(self):
-        clusters = defaultdict(list)
-        for c in nx.connected_components(self.contig_graph):
-            contigs = self.contig_graph.subgraph(c).nodes()
-            clusters[len(contigs)].append(contigs)
-        for num_clusters in sorted(clusters, reverse=True):
-            print(num_clusters, len(clusters[num_clusters]))
-            for cluster in clusters[num_clusters]:
-                for contig in sorted(cluster):
-                    print(self.contigs[contig])
-                print()
+        self.chromosome_groups = []
+        for c in nx.connected_components(self.cluster_graph):
+            self.chromosome_groups.append(self.cluster_graph.subgraph(c).nodes())
+
+        for i, chrom in enumerate(sorted(self.chromosome_groups, key=lambda c: len(c), reverse=True)):
+            print(i)
+            for cluster in sorted(chrom):
+                print(f"\t{cluster}")
+                f = cluster.split('_')
+                assembly, cnum = '_'.join(f[:-1]), int(f[-1])
+                for contig in sorted(self.clusters[assembly][cnum], key=lambda c: len(self.contigs[c]), reverse=True):
+                    print(f"\t\t{self.contigs[contig]}")
+            print()
+
 
 
     def report(self):
@@ -240,4 +268,4 @@ class Stitcher():
         with open(f"{self.outdir}/report.txt", 'wt') as report_file:
             for assembly in self.assemblies:
                 print(self.assembly_reports[assembly], file=report_file)
-        print(f"{self.contig_graph.number_of_nodes()} nodes and {self.contig_graph.number_of_edges()} edges")
+        print(f"{self.cluster_graph.number_of_nodes()} nodes and {self.cluster_graph.number_of_edges()} edges")
