@@ -5,7 +5,6 @@ from shutil import copyfile
 from multiprocessing import Pool
 from functools import partial
 from statistics import mean, median
-from tqdm import tqdm
 
 import networkx as nx
 
@@ -16,7 +15,7 @@ from jinja2 import Environment, FileSystemLoader
 from .assembly_plot import AssemblyPlot
 from .contig import Contig, process_contig, get_ploidy
 
-from .misc import flatten, cached_property, setup_output, include_file, report_folder
+from .misc import flatten, cached_property, setup_output, include_file, report_folder, tapestry_tqdm
 from .misc import minimap2, samtools, paftools, mosdepth, pigz
 
 
@@ -193,7 +192,7 @@ class Assembly(AssemblyPlot):
     def process_contigs(self):
         log.info(f"Processing {len(self.contigs)} contigs")
         with Pool(self.cores) as p:
-            for contig in tqdm(p.imap(process_contig, self.contigs.values()), total=len(self.contigs)):
+            for contig in tapestry_tqdm(p.imap(process_contig, self.contigs.values()), total=len(self.contigs), desc="Processing contigs"):
                 self.contigs[contig.name] = contig
 
 
@@ -201,7 +200,7 @@ class Assembly(AssemblyPlot):
         log.info(f"Calculating ploidy estimates")
         fit_ploidy = partial(get_ploidy, median_depth=self.median_depth)
         with Pool(self.cores) as p:
-            for contig in tqdm(p.imap(fit_ploidy, self.contigs.values()), total=len(self.contigs)):
+            for contig in tapestry_tqdm(p.imap(fit_ploidy, self.contigs.values()), total=len(self.contigs), desc="Ploidy estimates"):
                 self.contigs[contig.name] = contig
 
 

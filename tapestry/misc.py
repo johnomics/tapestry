@@ -3,6 +3,7 @@ from ._version import __version__
 import os, sys, argparse, itertools, errno, io, pkg_resources
 import logging as log
 from functools import partial, lru_cache
+from tqdm import tqdm
 
 from plumbum import local, CommandNotFound
 
@@ -33,6 +34,8 @@ if failed:
 
 
 report_folder = pkg_resources.resource_filename(__name__, 'report')
+
+tapestry_tqdm = partial(tqdm, unit=" contig", leave=False, miniters=1, dynamic_ncols=True)
 
 class PAF:
     def __init__(self, pafline):
