@@ -5,11 +5,13 @@ from shutil import copyfile
 from multiprocessing import Pool
 from functools import partial
 from statistics import mean, median
+from gzip import open as gzopen
 
 import networkx as nx
 
 from Bio import SeqIO, motifs
 from Bio.Seq import Seq
+from Bio.SeqIO.QualityIO import FastqGeneralIterator
 
 from jinja2 import Environment, FileSystemLoader
 from .assembly_plot import AssemblyPlot
@@ -22,17 +24,20 @@ from .misc import minimap2, samtools, paftools, mosdepth, pigz
 
 class Assembly(AssemblyPlot):
 
-    def __init__(self, assemblyfile, readfile, telomeres, outdir, cores):
+    def __init__(self, assemblyfile, readfile, telomeres, outdir, cores, depth, minreadlength):
         self.assemblyfile = assemblyfile
         self.readfile = readfile
         self.telomeres = [motifs.create([Seq(t[0])]) for t in telomeres] if telomeres else None
         self.outdir = outdir
         self.cores = cores
+        self.depth = depth
+        self.minreadlength = minreadlength
 
         setup_output(self.outdir)
         self.contigs = self.load_assembly()
 
         if self.readfile:
+            self.sample_reads()
             self.align_to_assembly('reads')
         else:
             log.warning("No read file provided (-r), will skip read metrics unless previous analysis files exist")
@@ -114,13 +119,44 @@ class Assembly(AssemblyPlot):
         return contigs
 
 
+    def sample_reads(self):
+        sampled_read_filename = f"{self.outdir}/reads.fastq.gz"
+        if os.path.exists(sampled_read_filename):
+            log.info(f"Will use existing {sampled_read_filename}")
+        else:
+            if self.depth == 0:
+                os.symlink(os.path.abspath(self.readfile), sampled_read_filename)
+                log.info(f"Using all reads as depth option is {self.depth}")
+            else:
+                log.info(f"Sampling {self.depth} times coverage of {len(self)/1000000:.1f} Mb assembly from >{self.minreadlength}bp reads in {self.readfile}")
+                bases = len(self) * self.depth
+                with gzopen(self.readfile, 'rt') as all_reads, gzopen(sampled_read_filename, "wt") as sampled_reads:
+                    sampled_bases = 0
+                    read_count = 0
+                    readset = []
+                    for read in SeqIO.parse(all_reads, "fastq"):
+                        if len(read.seq) < self.minreadlength:
+                            continue
+                        readset.append(read)
+                        read_count += 1
+                        if read_count % 10000 == 0:
+                            SeqIO.write(readset, sampled_reads, "fastq")
+                            readset = []
+                        sampled_bases += len(read.seq)
+                        if sampled_bases > bases:
+                            break
+                    SeqIO.write(readset, sampled_reads, "fastq")
+                log.info(f"Wrote {read_count} reads ({sampled_bases} bases) to {sampled_read_filename}")
+
+
     def make_bam(self, aligntype):
-        if os.path.exists(f"{self.outdir}/{aligntype}_assembly.bam"):
-            log.info(f"Will use existing {self.outdir}/{aligntype}_assembly.bam")
+        bam_filename = f"{self.outdir}/{aligntype}_assembly.bam"
+        if os.path.exists(bam_filename):
+            log.info(f"Will use existing {bam_filename}")
         else:
             inputfile = x_option = None
             if aligntype == 'reads':
-                inputfile = os.path.abspath(self.readfile)
+                inputfile = f"{self.outdir}/reads.fastq.gz"
                 x_option = 'map-ont'
             elif aligntype == 'contigs':
                 inputfile = f"{self.outdir}/assembly.fasta"
@@ -135,7 +171,7 @@ class Assembly(AssemblyPlot):
                 align = minimap2[f"-x{x_option}", "-a", "-2", f"-t{self.cores}", \
                                        f"{self.outdir}/assembly.fasta", inputfile] | \
                               samtools["sort", f"-@{self.cores-1}", \
-                                       f"-o{self.outdir}/{aligntype}_assembly.bam"]
+                                       f"-o{bam_filename}"]
                 align()
             except:
                 log.error(f"Failed to align {inputfile} to {self.outdir}/assembly.fasta")
@@ -143,13 +179,14 @@ class Assembly(AssemblyPlot):
 
 
     def index_bam(self, aligntype):
-        if os.path.exists(f"{self.outdir}/{aligntype}_assembly.bam.bai"):
-            log.info(f"Will use existing {self.outdir}/{aligntype}_assembly.bam.bai")
+        bam_filename = f"{self.outdir}/{aligntype}_assembly.bam"
+        if os.path.exists(f"{bam_filename}.bai"):
+            log.info(f"Will use existing {bam_filename}.bai")
         else:
             try:
-                samtools("index", f"-@{self.cores-1}", f"{self.outdir}/{aligntype}_assembly.bam")
+                samtools("index", f"-@{self.cores-1}", bam_filename)
             except:
-                log.error(f"Failed to index {self.outdir}/{aligntype}_assembly.bam")
+                log.error(f"Failed to index {bam_filename}")
 
 
     def make_paf(self, aligntype):

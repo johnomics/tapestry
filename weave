@@ -13,7 +13,7 @@ if __name__ == '__main__':
 
     versions(args.verbose)
 
-    assembly = Assembly(args.assembly, args.reads, args.telomere, args.output, args.cores)
+    assembly = Assembly(args.assembly, args.reads, args.telomere, args.output, args.cores, args.depth, args.length)
 
     assembly.plot()
 

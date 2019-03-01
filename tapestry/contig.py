@@ -104,9 +104,9 @@ class Contig:
 
     def completeness(self):
         completeness = ''
-        if self.tel_start > 0 and self.mean_start_overhang < 250:
+        if self.tel_start > 0 and self.mean_start_overhang is not None and self.mean_start_overhang < 250:
             completeness += 'L'
-        if self.tel_end   > 0 and self.mean_end_overhang   < 250:
+        if self.tel_end   > 0 and self.mean_end_overhang is not None and self.mean_end_overhang   < 250:
             completeness += 'R'
         if completeness == 'LR':
             completeness = 'C'
@@ -233,7 +233,6 @@ class Contig:
         region_depths = IntervalTree()
         for region in regions:
             region_depths[region.begin:region.end] = len(alignments[region.begin:region.end])
-        
         return sorted(region_depths)
 
 
