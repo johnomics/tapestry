@@ -1,4 +1,4 @@
-import os, re, pysam
+import os, re, pysam, warnings
 
 import numpy as np
 
@@ -8,6 +8,7 @@ from statistics import mean, median
 from intervaltree import Interval, IntervalTree
 
 from sklearn import mixture
+from sklearn.exceptions import ConvergenceWarning
 
 from Bio.SeqUtils import GC
 
@@ -168,10 +169,10 @@ class Contig:
             bam = pysam.AlignmentFile(f"{self.outdir}/reads_assembly.bam", 'rb')
 
             mean_start_overhang = self.get_read_overhang(
-                    bam, 0, 1000,
+                    bam, 0, min(1000, len(self)),
                     lambda aln: aln.query_alignment_start-aln.reference_start)
             mean_end_overhang = self.get_read_overhang(
-                    bam, len(self)-1001, len(self)-1,
+                    bam, max(len(self)-1001,0), len(self)-1,
                     lambda aln: (aln.query_length - aln.query_alignment_end) - (len(self) - aln.reference_end))
 
         return mean_start_overhang, mean_end_overhang
@@ -269,7 +270,9 @@ class Contig:
 
         model = mixture.BayesianGaussianMixture(n_components=components, max_iter=1000)
         depths = np.array([d.depth for d in self.read_depths]).reshape(-1,1)
+        warnings.filterwarnings("ignore", category=ConvergenceWarning)
         model.fit(depths)
+        warnings.resetwarnings()
 
         for i in range(0,len(model.means_)):
             ploidy = self.assign_ploidy(model.means_[i], median_depth/2)
