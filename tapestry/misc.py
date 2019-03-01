@@ -1,6 +1,6 @@
 from ._version import __version__
 
-import os, sys, argparse, itertools, errno, io
+import os, sys, argparse, itertools, errno, io, pkg_resources
 import logging as log
 from functools import partial, lru_cache
 
@@ -32,7 +32,7 @@ if failed:
     sys.exit()
 
 
-report_folder = 'tapestry/report'
+report_folder = pkg_resources.resource_filename(__name__, 'report')
 
 class PAF:
     def __init__(self, pafline):
