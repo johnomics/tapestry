@@ -138,10 +138,19 @@ class Assembly(AssemblyPlot):
                               samtools["sort", f"-@{self.cores-1}", \
                                        f"-o{self.outdir}/{aligntype}_assembly.bam"]
                 align()
-                samtools("index", f"-@{self.cores-1}", f"{self.outdir}/{aligntype}_assembly.bam")
             except:
                 log.error(f"Failed to align {inputfile} to {self.outdir}/assembly.fasta")
                 sys.exit()
+
+
+    def index_bam(self, aligntype):
+        if os.path.exists(f"{self.outdir}/{aligntype}_assembly.bam.bai"):
+            log.info(f"Will use existing {self.outdir}/{aligntype}_assembly.bam.bai")
+        else:
+            try:
+                samtools("index", f"-@{self.cores-1}", f"{self.outdir}/{aligntype}_assembly.bam")
+            except:
+                log.error(f"Failed to index {self.outdir}/{aligntype}_assembly.bam")
 
 
     def make_paf(self, aligntype):
@@ -175,6 +184,7 @@ class Assembly(AssemblyPlot):
 
     def align_to_assembly(self, aligntype):
         self.make_bam(aligntype)
+        self.index_bam(aligntype)
         self.run_mosdepth(f"{aligntype}_assembly")
         if aligntype=="contigs":
             self.make_paf(aligntype)
