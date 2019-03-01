@@ -5,6 +5,7 @@ from shutil import copyfile
 from multiprocessing import Pool
 from functools import partial
 from statistics import mean, median
+from tqdm import tqdm
 
 import networkx as nx
 
@@ -164,7 +165,7 @@ class Assembly(AssemblyPlot):
         log.info(f"Running mosdepth for {filestub}")
         
         try:
-            mosdepth(f"-t{self.cores}", "-b1000", "-n", \
+            mosdepth("-b1000", "-n", \
                      f"{self.outdir}/{filestub}", \
                      f"{self.outdir}/{filestub}.bam")
         except:
@@ -182,7 +183,7 @@ class Assembly(AssemblyPlot):
     def process_contigs(self):
         log.info(f"Processing {len(self.contigs)} contigs")
         with Pool(self.cores) as p:
-            for contig in p.map(process_contig, self.contigs.values()):
+            for contig in tqdm(p.imap(process_contig, self.contigs.values()), total=len(self.contigs)):
                 self.contigs[contig.name] = contig
 
 
@@ -190,7 +191,7 @@ class Assembly(AssemblyPlot):
         log.info(f"Calculating ploidy estimates")
         fit_ploidy = partial(get_ploidy, median_depth=self.median_depth)
         with Pool(self.cores) as p:
-            for contig in p.map(fit_ploidy, self.contigs.values()):
+            for contig in tqdm(p.imap(fit_ploidy, self.contigs.values()), total=len(self.contigs)):
                 self.contigs[contig.name] = contig
 
 
