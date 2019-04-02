@@ -1,6 +1,9 @@
-import os, re, pysam, warnings
+import os, re, warnings
 
 import numpy as np
+import pandas as pd
+
+import pysam
 
 from collections import namedtuple, defaultdict
 from statistics import mean, median
@@ -10,9 +13,12 @@ from intervaltree import Interval, IntervalTree
 from sklearn import mixture
 from sklearn.exceptions import ConvergenceWarning
 
+from sqlalchemy import create_engine, MetaData, Table, func
+from sqlalchemy.sql import select
+
 from Bio.SeqUtils import GC
 
-from .misc import grep, PAF
+from .misc import grep, PAF, file_exists
 
 # Define process_contig at top level rather than in class so it works with multiprocessing
 def process_contig(contig):
@@ -28,11 +34,12 @@ DepthRecord = namedtuple('DepthRecord', 'start, end, depth')
 
 class Contig:
 
-    def __init__(self, rec, telomeres, outdir):
+    def __init__(self, rec, telomeres, outdir, filenames):
         self.name = rec.id
         self.rec = rec
         self.telomeres = telomeres
         self.outdir = outdir
+        self.filenames = filenames
 
 
     def report(self, assembly_gc):
@@ -188,19 +195,48 @@ class Contig:
         return start_matches, end_matches
 
 
+    def get_aligned_counts(self):
+
+        # Retrieve counts
+        engine = create_engine(f"sqlite:///{self.filenames['reads_db']}")
+        metadata = MetaData(engine)
+        alignments = Table('alignments', metadata, autoload=True, autoload_with=engine)
+        conn = engine.connect()
+        stmt = select([alignments.columns.alntype, 
+                       func.count(alignments.columns.read).label('reads'), 
+                       func.sum(alignments.columns.aligned_length).label('aligned_length'),
+                       func.sum(alignments.columns.read_length).label('read_length')
+                   ])
+        stmt = stmt.where(alignments.columns.contig == self.name)
+        stmt = stmt.group_by(alignments.columns.alntype)
+        results = conn.execute(stmt).fetchall()
+        
+        # Convert results to DataFrame
+        count_bases = pd.DataFrame(results)
+        if count_bases.empty:
+            return None
+        count_bases.columns =  results[0].keys()
+        count_bases = count_bases.set_index('alntype')
+
+        # Fill missing values
+        for alntype in 'primary', 'secondary', 'supplementary':
+            if alntype not in count_bases.index:
+                count_bases.loc[alntype] = [0, 0, 0]
+        
+        return count_bases
+
+
     def get_read_alignment_stats(self):
         aligned_primary_bases = all_primary_bases = aligned_non_primary_bases = 0
 
-        if os.path.exists(f"{self.outdir}/reads_assembly.bam"):
-            bam = pysam.AlignmentFile(f"{self.outdir}/reads_assembly.bam", 'rb')
-            for aln in bam.fetch(self.name):
-                if aln.is_unmapped:
-                    continue
-                if aln.is_secondary or aln.is_supplementary:
-                    aligned_non_primary_bases += aln.query_alignment_length
-                    continue
-                all_primary_bases += aln.query_length
-                aligned_primary_bases += aln.query_alignment_length
+        if file_exists(self.filenames['reads_db']):
+            count_bases = self.get_aligned_counts()
+            if count_bases is not None:
+                aligned_non_primary_bases = count_bases.loc['secondary','aligned_length'] + count_bases.loc['supplementary', 'aligned_length']
+                all_primary_bases = count_bases.loc['primary', 'read_length']
+                aligned_primary_bases = count_bases.loc['primary', 'aligned_length']
+        else:
+            log.info("No read database, so will return 0 for alignment percentages")
 
         all_aligned_bases = aligned_primary_bases + aligned_non_primary_bases
         
@@ -340,8 +376,8 @@ class Contig:
     def get_connectors(self):
         left_connectors = right_connectors = []
 
-        if os.path.exists(f"{self.outdir}/reads_assembly.bam"):
-            bam = pysam.AlignmentFile(f"{self.outdir}/reads_assembly.bam", 'rb')
+        if file_exists(self.filenames['reads_bam']):
+            bam = pysam.AlignmentFile(self.filenames['reads_bam'], 'rb')
 
             if self.completeness() in ['R', '-']:
                 left_connectors = self.get_region_connectors(bam, 0, 10000)

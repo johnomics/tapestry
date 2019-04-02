@@ -127,7 +127,7 @@ def setup_output(outdir):
         log.info(f"Created output directory {outdir}")
     except OSError as exc:
         if exc.errno == errno.EEXIST:
-            log.warning(f"Output directory {outdir} found, will use existing analysis files if present, but overwrite reports")
+            log.warning(f"Output directory {outdir} found, will use existing analysis files if present and up-to-date, but overwrite reports")
         else:
             raise
 
@@ -168,6 +168,14 @@ def set_verbosity(verbosity):
         log.getLogger().setLevel(log.DEBUG)
     else:
         log.getLogger().setLevel(log.WARN)
+
+
+def file_exists(filename, deps=[]):
+    file_exists = os.path.exists(filename)
+    for dep in deps:
+        if file_exists and dep is not None:
+            file_exists = os.stat(filename).st_mtime > os.stat(dep).st_mtime
+    return file_exists
 
 
 def flatten(l):

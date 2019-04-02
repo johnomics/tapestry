@@ -1,5 +1,7 @@
 import os, sys, json
 import logging as log
+import networkx as nx
+import pysam
 
 from shutil import copyfile
 from multiprocessing import Pool
@@ -7,7 +9,7 @@ from functools import partial
 from statistics import mean, median
 from gzip import open as gzopen
 
-import networkx as nx
+from sqlalchemy import create_engine, Table, Column, Integer, String, MetaData
 
 from Bio import SeqIO, motifs
 from Bio.Seq import Seq
@@ -17,10 +19,22 @@ from jinja2 import Environment, FileSystemLoader
 from .assembly_plot import AssemblyPlot
 from .contig import Contig, process_contig, get_ploidy
 
-from .misc import flatten, cached_property, setup_output, include_file, report_folder, tapestry_tqdm
+from .misc import flatten, cached_property, setup_output, include_file, report_folder, tapestry_tqdm, file_exists
 from .misc import minimap2, samtools, paftools, mosdepth, pigz
 
-
+filenames = {
+    'assembly'         : 'assembly.fasta', 
+    'assembly_index'   : 'assembly.fasta.fai',
+    'sampled_reads'    : 'reads.fastq.gz', 
+    'reads_bam'        : 'reads_assembly.bam',
+    'reads_index'      : 'reads_assembly.bam.bai',
+    'reads_mosdepth'   : 'reads_assembly.regions.bed.gz',
+    'reads_db'         : 'aligned_reads.db',
+    'contigs_bam'      : 'contigs_assembly.bam',
+    'contigs_index'    : 'contigs_assembly.bam.bai',
+    'contigs_paf'      : 'contigs_assembly.paf.gz',
+    'contigs_mosdepth' : 'contigs_assembly.regions.bed.gz'
+}
 
 class Assembly(AssemblyPlot):
 
@@ -34,6 +48,8 @@ class Assembly(AssemblyPlot):
         self.minreadlength = minreadlength
 
         setup_output(self.outdir)
+        self.filenames = {file_key:f"{self.outdir}/{filenames[file_key]}" for file_key in filenames}
+
         self.contigs = self.load_assembly()
 
         if self.readfile:
@@ -82,33 +98,20 @@ class Assembly(AssemblyPlot):
         return f"{self.unique_bases/len(self) * 100:.0f}"
 
 
-    def index_assembly(self):
-        if os.path.exists(f"{self.outdir}/assembly.fasta.fai"):
-           log.info(f"Will use existing {self.outdir}/assembly.fasta.fai")
-        else:
-            try:
-                log.info(f"Indexing assembly")
-                samtools("faidx", f"{self.outdir}/assembly.fasta")
-            except:
-                log.error(f"Can't index assembly!")
-                sys.exit()
-
-
     def load_assembly(self):
         contigs = {}
-        assembly_filename = f"{self.outdir}/assembly.fasta"
-        write_assembly = False if os.path.exists(assembly_filename) else True
-        if not write_assembly:
-            log.info(f"Will use existing {assembly_filename}")
+        no_assembly_found = not file_exists(self.filenames['assembly'])
+        if no_assembly_found:
+            log.info(f"Will use existing {self.filenames['assembly']}")
 
         try:
             log.info(f"Loading genome assembly")
-            assembly_out = open(assembly_filename, 'w') if write_assembly else None
+            assembly_out = open(self.filenames['assembly'], 'w') if no_assembly_found else None
             for rec in SeqIO.parse(open(self.assemblyfile, 'r'), "fasta"):
                 rec.seq = rec.seq.upper()
                 rec.id = f"{self.outdir}_{rec.id}"
-                contigs[rec.id] = Contig(rec, self.telomeres, self.outdir)
-                if write_assembly:
+                contigs[rec.id] = Contig(rec, self.telomeres, self.outdir, self.filenames)
+                if no_assembly_found:
                     SeqIO.write(rec, assembly_out, "fasta")
         except IOError:
             log.error(f"Can't load assembly from file {self.assemblyfile}!")
@@ -119,18 +122,29 @@ class Assembly(AssemblyPlot):
         return contigs
 
 
+    def index_assembly(self):
+        if file_exists(self.filenames['assembly_index'], deps=[self.filenames['assembly']]):
+           log.info(f"Will use existing {self.filenames['assembly_index']}")
+        else:
+            try:
+                log.info(f"Indexing assembly")
+                samtools("faidx", self.filenames['assembly'])
+            except:
+                log.error(f"Can't index assembly {self.filenames['assembly']}!")
+                sys.exit()
+
+
     def sample_reads(self):
-        sampled_read_filename = f"{self.outdir}/reads.fastq.gz"
-        if os.path.exists(sampled_read_filename):
-            log.info(f"Will use existing {sampled_read_filename}")
+        if file_exists(self.filenames['sampled_reads']):
+            log.info(f"Will use existing {self.filenames['sampled_reads']}")
         else:
             if self.depth == 0:
-                os.symlink(os.path.abspath(self.readfile), sampled_read_filename)
+                os.symlink(os.path.abspath(self.readfile), self.filenames['sampled_reads'])
                 log.info(f"Using all reads as depth option is {self.depth}")
             else:
                 log.info(f"Sampling {self.depth} times coverage of {len(self)/1000000:.1f} Mb assembly from >{self.minreadlength}bp reads in {self.readfile}")
                 bases = len(self) * self.depth
-                with gzopen(self.readfile, 'rt') as all_reads, gzopen(sampled_read_filename, "wt") as sampled_reads:
+                with gzopen(self.readfile, 'rt') as all_reads, gzopen(self.filenames['sampled_reads'], "wt") as sampled_reads:
                     sampled_bases = 0
                     read_count = 0
                     readset = []
@@ -146,20 +160,20 @@ class Assembly(AssemblyPlot):
                         if sampled_bases > bases:
                             break
                     SeqIO.write(readset, sampled_reads, "fastq")
-                log.info(f"Wrote {read_count} reads ({sampled_bases} bases) to {sampled_read_filename}")
+                log.info(f"Wrote {read_count} reads ({sampled_bases} bases) to {self.filenames['sampled_reads']}")
 
 
     def make_bam(self, aligntype):
-        bam_filename = f"{self.outdir}/{aligntype}_assembly.bam"
-        if os.path.exists(bam_filename):
+        bam_filename = self.filenames[f'{aligntype}_bam']
+        if file_exists(bam_filename, deps=[self.filenames['sampled_reads'], self.filenames['assembly']]):
             log.info(f"Will use existing {bam_filename}")
         else:
             inputfile = x_option = None
             if aligntype == 'reads':
-                inputfile = f"{self.outdir}/reads.fastq.gz"
+                inputfile = self.filenames['sampled_reads']
                 x_option = 'map-ont'
             elif aligntype == 'contigs':
-                inputfile = f"{self.outdir}/assembly.fasta"
+                inputfile = self.filenames['assembly']
                 x_option = 'ava-ont'
             else:
                 log.error(f"Don't know how to align {aligntype}")
@@ -169,61 +183,141 @@ class Assembly(AssemblyPlot):
             # samtools uses cores-1 because -@ specifies additional cores and defaults to 0
             try:
                 align = minimap2[f"-x{x_option}", "-a", "-2", f"-t{self.cores}", \
-                                       f"{self.outdir}/assembly.fasta", inputfile] | \
+                                       self.filenames['assembly'], inputfile] | \
                               samtools["sort", f"-@{self.cores-1}", \
                                        f"-o{bam_filename}"]
                 align()
             except:
-                log.error(f"Failed to align {inputfile} to {self.outdir}/assembly.fasta")
+                log.error(f"Failed to align {inputfile} to {self.filenames['assembly']}")
                 sys.exit()
 
 
     def index_bam(self, aligntype):
-        bam_filename = f"{self.outdir}/{aligntype}_assembly.bam"
-        if os.path.exists(f"{bam_filename}.bai"):
-            log.info(f"Will use existing {bam_filename}.bai")
+        bam_filename = self.filenames[f'{aligntype}_bam']
+        bai_filename = self.filenames[f'{aligntype}_index']
+        if file_exists(bai_filename, deps=[bam_filename]):
+            log.info(f"Will use existing {bai_filename}")
         else:
             try:
+                log.info(f"Indexing {bam_filename}")
                 samtools("index", f"-@{self.cores-1}", bam_filename)
             except:
                 log.error(f"Failed to index {bam_filename}")
 
 
     def make_paf(self, aligntype):
-        if os.path.exists(f"{self.outdir}/{aligntype}_assembly.paf.gz"):
-            log.info(f"Will use existing {self.outdir}/{aligntype}_assembly.paf.gz")
+        paf_filename = self.filenames[f"{aligntype}_paf"]
+        bam_filename = self.filenames[f"{aligntype}_bam"]
+        if file_exists(paf_filename, deps=[bam_filename]):
+            log.info(f"Will use existing {paf_filename}")
         else:
             try:
-                samtopaf = (samtools["view", "-h", f"{self.outdir}/{aligntype}_assembly.bam"] | \
-                           paftools["sam2paf", "-"] | pigz[f"-p{self.cores}"] > f"{self.outdir}/{aligntype}_assembly.paf.gz")
+                log.info(f"Converting {bam_filename} to {paf_filename}")
+                samtopaf = (samtools["view", "-h", bam_filename] | \
+                           paftools["sam2paf", "-"] | pigz[f"-p{self.cores}"] > paf_filename)
                 samtopaf()
             except:
-                log.error(f"Failed to convert {self.outdir}/{aligntype}_assembly.bam to {self.outdir}/{aligntype}_assembly.paf.gz")
+                log.error(f"Failed to convert {bam_filename} to {paf_filename}")
                 sys.exit()
 
 
-    def run_mosdepth(self, filestub):
-        if os.path.exists(f"{self.outdir}/{filestub}.regions.bed.gz"):
-            log.info(f"Will use existing {filestub} mosdepth output")
+    def run_mosdepth(self, aligntype):
+        mos_filename = self.filenames[f'{aligntype}_mosdepth']
+        bam_filename = self.filenames[f'{aligntype}_bam']
+        if file_exists(mos_filename, deps=[bam_filename]):
+            log.info(f"Will use existing {mos_filename} mosdepth output")
             return
 
-        log.info(f"Running mosdepth for {filestub}")
-        
         try:
+            log.info(f"Running mosdepth for {aligntype}")
             mosdepth("-b1000", "-n", \
-                     f"{self.outdir}/{filestub}", \
-                     f"{self.outdir}/{filestub}.bam")
+                     f"{self.outdir}/{aligntype}_assembly", \
+                     bam_filename)
         except:
-            log.error(f"Failed to run mosdepth for {self.outdir}/{filestub}.bam")
+            log.error(f"Failed to run mosdepth for {bam_filename}")
             sys.exit()
 
 
     def align_to_assembly(self, aligntype):
         self.make_bam(aligntype)
         self.index_bam(aligntype)
-        self.run_mosdepth(f"{aligntype}_assembly")
+        self.run_mosdepth(aligntype)
         if aligntype=="contigs":
             self.make_paf(aligntype)
+        elif aligntype=="reads":
+            self.build_reads_database()
+
+
+    def get_alignment_type(self, aln):
+        alignment_type = 'primary'
+        if aln.is_unmapped:
+            alignment_type = 'unmapped'
+        elif aln.is_secondary:
+            alignment_type = 'secondary'
+        elif aln.is_supplementary:
+            alignment_type = 'supplementary'
+        return alignment_type
+
+
+    def process_bam_chunks(self, bamfile, chunksize=1000):
+        bam = pysam.AlignmentFile(bamfile, 'rb')
+        alncount = 0
+        chunk = []
+        for aln in bam.fetch(until_eof=True): # until_eof includes unmapped reads
+            chunk.append({
+                'read':aln.query_name,
+                'alntype':self.get_alignment_type(aln),
+                'contig':aln.reference_name,
+                'position':aln.reference_start,
+                'mq':aln.mapping_quality,
+                'aligned_length': aln.query_alignment_length,
+                'read_length': aln.query_length
+            })
+
+            alncount += 1
+            if alncount == 1000:
+                yield chunk
+                alncount = 0
+                chunk = []
+
+
+        yield chunk
+
+
+    def create_reads_database(self, db_filename):
+        engine = create_engine(f'sqlite:///{db_filename}')
+
+        metadata = MetaData()
+        alignments = Table('alignments', metadata,
+            Column('read', String),
+            Column('alntype', Integer),
+            Column('contig', String),
+            Column('position', Integer),
+            Column('mq', Integer),
+            Column('aligned_length', Integer),
+            Column('read_length', Integer)
+        )
+
+        metadata.create_all(engine)
+
+        return engine, alignments
+
+
+    def build_reads_database(self):
+        if file_exists(self.filenames['reads_db'], deps=[self.filenames['reads_bam']]):
+            log.info(f"Will use existing {self.filenames['reads_db']}")
+        else:
+            try:
+                if file_exists(self.filenames['reads_bam']):
+                    log.info(f"Building reads database {self.filenames['reads_db']}")
+                    engine, alignments = self.create_reads_database(self.filenames['reads_db'])
+                    conn = engine.connect()
+                    for chunk in self.process_bam_chunks(self.filenames['reads_bam']):
+                        conn.execute(alignments.insert(), chunk)
+                else:
+                    log.error(f"Can't find an up-to-date {self.filenames['reads_bam']} file")
+            except:
+                log.error(f"Failed to build database {self.filenames['reads_db']}")
 
 
     def process_contigs(self):
