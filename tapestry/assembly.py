@@ -9,7 +9,7 @@ from functools import partial
 from statistics import mean, median
 from gzip import open as gzopen
 
-from sqlalchemy import create_engine, Table, Column, Integer, String, MetaData
+from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Boolean
 
 from Bio import SeqIO, motifs
 from Bio.Seq import Seq
@@ -264,14 +264,25 @@ class Assembly(AssemblyPlot):
         alncount = 0
         chunk = []
         for aln in bam.fetch(until_eof=True): # until_eof includes unmapped reads
+            alntype = self.get_alignment_type(aln)
+            read_length = aln.infer_read_length()
+            aligned_length = aln.query_alignment_length
+            if alntype == 'unmapped':
+                read_length = aln.query_length
+                aligned_length = 0
+
             chunk.append({
                 'read':aln.query_name,
-                'alntype':self.get_alignment_type(aln),
+                'read_length': read_length,
+                'alntype':alntype,
                 'contig':aln.reference_name,
-                'position':aln.reference_start,
                 'mq':aln.mapping_quality,
-                'aligned_length': aln.query_alignment_length,
-                'read_length': aln.query_length
+                'reversed':aln.is_reverse,
+                'ref_start': aln.reference_start,
+                'ref_end': aln.reference_end,
+                'read_start': aln.query_alignment_start,
+                'read_end': aln.query_alignment_end,
+                'aligned_length': aligned_length
             })
 
             alncount += 1
@@ -290,12 +301,16 @@ class Assembly(AssemblyPlot):
         metadata = MetaData()
         alignments = Table('alignments', metadata,
             Column('read', String),
+            Column('read_length', Integer),
             Column('alntype', Integer),
             Column('contig', String),
-            Column('position', Integer),
             Column('mq', Integer),
-            Column('aligned_length', Integer),
-            Column('read_length', Integer)
+            Column('reversed', Boolean),
+            Column('ref_start', Integer),
+            Column('ref_end', Integer),
+            Column('read_start', Integer),
+            Column('read_end', Integer),
+            Column('aligned_length', Integer)
         )
 
         metadata.create_all(engine)
@@ -310,6 +325,8 @@ class Assembly(AssemblyPlot):
             try:
                 if file_exists(self.filenames['reads_bam']):
                     log.info(f"Building reads database {self.filenames['reads_db']}")
+                    if file_exists(self.filenames['reads_db']): # Have to remove old database
+                        os.remove(self.filenames['reads_db'])   # so new reads are not added to it
                     engine, alignments = self.create_reads_database(self.filenames['reads_db'])
                     conn = engine.connect()
                     for chunk in self.process_bam_chunks(self.filenames['reads_bam']):
