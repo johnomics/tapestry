@@ -1,9 +1,16 @@
 import pysam
 import logging as log
+import pandas as pd
 
-from sqlalchemy import create_engine, MetaData, Table, Column, ForeignKey, Integer, String, Boolean
+from collections import namedtuple
+
+from sqlalchemy import create_engine, MetaData, Table, Column, ForeignKey, func
+from sqlalchemy import Integer, String, Boolean
+from sqlalchemy.sql import select
 
 from .misc import file_exists
+
+ReadsDB = namedtuple('ReadsDB', 'reads contigs alignments')
 
 def get_alignment_type(aln):
     alignment_type = 'primary'
@@ -148,3 +155,48 @@ def build_reads_database(bam_filename, db_filename, assembly_contigs):
                 log.error(f"Can't find an up-to-date {bam_filename} file")
         except:
             log.error(f"Failed to build database {db_filename}")
+
+
+def load_reads_database(db_filename):
+    engine = create_engine(f"sqlite:///{db_filename}")
+    metadata = MetaData(engine)
+    db = ReadsDB(
+        reads      = Table('reads',      metadata, autoload=True, autoload_with=engine),
+        contigs    = Table('contigs',    metadata, autoload=True, autoload_with=engine),
+        alignments = Table('alignments', metadata, autoload=True, autoload_with=engine)
+    )
+    conn = engine.connect()
+    return conn, db
+
+
+def get_aligned_counts(db_filename, contig_name):
+
+    conn, db = load_reads_database(db_filename)
+    
+    stmt = (select([db.alignments.c.alntype, 
+                   func.count(db.alignments.c.read).label('reads'), 
+                   func.sum(db.alignments.c.aligned_length).label('aligned_length'),
+                   func.sum(db.reads.c.length).label('read_length')
+               ])
+            .select_from(db.reads.join(db.alignments))
+            .where(db.alignments.c.contig == contig_name)
+            .group_by(db.alignments.c.alntype)
+           )
+
+    results = conn.execute(stmt).fetchall()
+    conn.close()
+
+    # Convert results to DataFrame
+    count_bases = pd.DataFrame(results)
+    if count_bases.empty:
+        return None
+    count_bases.columns =  results[0].keys()
+    count_bases = count_bases.set_index('alntype')
+
+    # Fill missing values
+    for alntype in 'primary', 'secondary', 'supplementary':
+        if alntype not in count_bases.index:
+            count_bases.loc[alntype] = [0, 0, 0]
+    
+    return count_bases
+

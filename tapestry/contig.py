@@ -1,7 +1,6 @@
 import os, re, warnings
 
 import numpy as np
-import pandas as pd
 
 import pysam
 
@@ -13,11 +12,9 @@ from intervaltree import Interval, IntervalTree
 from sklearn import mixture
 from sklearn.exceptions import ConvergenceWarning
 
-from sqlalchemy import create_engine, MetaData, Table, func
-from sqlalchemy.sql import select
-
 from Bio.SeqUtils import GC
 
+from .db import get_aligned_counts
 from .misc import grep, PAF, file_exists
 
 # Define process_contig at top level rather than in class so it works with multiprocessing
@@ -195,46 +192,11 @@ class Contig:
         return start_matches, end_matches
 
 
-    def get_aligned_counts(self):
-
-        # Retrieve counts
-        engine = create_engine(f"sqlite:///{self.filenames['reads_db']}")
-        metadata = MetaData(engine)
-        reads = Table('reads', metadata, autoload=True, autoload_with=engine)
-        alignments = Table('alignments', metadata, autoload=True, autoload_with=engine)
-        conn = engine.connect()
-        stmt = (select([alignments.c.alntype, 
-                       func.count(alignments.c.read).label('reads'), 
-                       func.sum(alignments.c.aligned_length).label('aligned_length'),
-                       func.sum(reads.c.length).label('read_length')
-                   ])
-                .select_from(reads.join(alignments))
-                .where(alignments.c.contig == self.name)
-                .group_by(alignments.c.alntype)
-               )
-
-        results = conn.execute(stmt).fetchall()
-
-        # Convert results to DataFrame
-        count_bases = pd.DataFrame(results)
-        if count_bases.empty:
-            return None
-        count_bases.columns =  results[0].keys()
-        count_bases = count_bases.set_index('alntype')
-
-        # Fill missing values
-        for alntype in 'primary', 'secondary', 'supplementary':
-            if alntype not in count_bases.index:
-                count_bases.loc[alntype] = [0, 0, 0]
-        
-        return count_bases
-
-
     def get_read_alignment_stats(self):
         aligned_primary_bases = all_primary_bases = aligned_non_primary_bases = 0
 
         if file_exists(self.filenames['reads_db']):
-            count_bases = self.get_aligned_counts()
+            count_bases = get_aligned_counts(self.filenames['reads_db'], self.name)
             if count_bases is not None:
                 aligned_non_primary_bases = count_bases.loc['secondary','aligned_length'] + count_bases.loc['supplementary', 'aligned_length']
                 all_primary_bases = count_bases.loc['primary', 'read_length']
