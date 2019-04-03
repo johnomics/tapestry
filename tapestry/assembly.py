@@ -1,15 +1,11 @@
 import os, sys, json
 import logging as log
 import networkx as nx
-import pysam
 
-from shutil import copyfile
 from multiprocessing import Pool
 from functools import partial
 from statistics import mean, median
 from gzip import open as gzopen
-
-from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Boolean
 
 from Bio import SeqIO, motifs
 from Bio.Seq import Seq
@@ -17,8 +13,9 @@ from Bio.SeqIO.QualityIO import FastqGeneralIterator
 
 from jinja2 import Environment, FileSystemLoader
 from .assembly_plot import AssemblyPlot
-from .contig import Contig, process_contig, get_ploidy
 
+from .contig import Contig, process_contig, get_ploidy
+from .db import build_reads_database
 from .misc import flatten, cached_property, setup_output, include_file, report_folder, tapestry_tqdm, file_exists
 from .misc import minimap2, samtools, paftools, mosdepth, pigz
 
@@ -35,6 +32,8 @@ filenames = {
     'contigs_paf'      : 'contigs_assembly.paf.gz',
     'contigs_mosdepth' : 'contigs_assembly.regions.bed.gz'
 }
+
+
 
 class Assembly(AssemblyPlot):
 
@@ -245,96 +244,7 @@ class Assembly(AssemblyPlot):
         if aligntype=="contigs":
             self.make_paf(aligntype)
         elif aligntype=="reads":
-            self.build_reads_database()
-
-
-    def get_alignment_type(self, aln):
-        alignment_type = 'primary'
-        if aln.is_unmapped:
-            alignment_type = 'unmapped'
-        elif aln.is_secondary:
-            alignment_type = 'secondary'
-        elif aln.is_supplementary:
-            alignment_type = 'supplementary'
-        return alignment_type
-
-
-    def process_bam_chunks(self, bamfile, chunksize=1000):
-        bam = pysam.AlignmentFile(bamfile, 'rb')
-        alncount = 0
-        chunk = []
-        for aln in bam.fetch(until_eof=True): # until_eof includes unmapped reads
-            alntype = self.get_alignment_type(aln)
-            read_length = aln.infer_read_length()
-            aligned_length = aln.query_alignment_length
-            if alntype == 'unmapped':
-                read_length = aln.query_length
-                aligned_length = 0
-
-            chunk.append({
-                'read':aln.query_name,
-                'read_length': read_length,
-                'alntype':alntype,
-                'contig':aln.reference_name,
-                'mq':aln.mapping_quality,
-                'reversed':aln.is_reverse,
-                'ref_start': aln.reference_start,
-                'ref_end': aln.reference_end,
-                'read_start': aln.query_alignment_start,
-                'read_end': aln.query_alignment_end,
-                'aligned_length': aligned_length
-            })
-
-            alncount += 1
-            if alncount == 1000:
-                yield chunk
-                alncount = 0
-                chunk = []
-
-
-        yield chunk
-
-
-    def create_reads_database(self, db_filename):
-        engine = create_engine(f'sqlite:///{db_filename}')
-
-        metadata = MetaData()
-        alignments = Table('alignments', metadata,
-            Column('read', String),
-            Column('read_length', Integer),
-            Column('alntype', Integer),
-            Column('contig', String),
-            Column('mq', Integer),
-            Column('reversed', Boolean),
-            Column('ref_start', Integer),
-            Column('ref_end', Integer),
-            Column('read_start', Integer),
-            Column('read_end', Integer),
-            Column('aligned_length', Integer)
-        )
-
-        metadata.create_all(engine)
-
-        return engine, alignments
-
-
-    def build_reads_database(self):
-        if file_exists(self.filenames['reads_db'], deps=[self.filenames['reads_bam']]):
-            log.info(f"Will use existing {self.filenames['reads_db']}")
-        else:
-            try:
-                if file_exists(self.filenames['reads_bam']):
-                    log.info(f"Building reads database {self.filenames['reads_db']}")
-                    if file_exists(self.filenames['reads_db']): # Have to remove old database
-                        os.remove(self.filenames['reads_db'])   # so new reads are not added to it
-                    engine, alignments = self.create_reads_database(self.filenames['reads_db'])
-                    conn = engine.connect()
-                    for chunk in self.process_bam_chunks(self.filenames['reads_bam']):
-                        conn.execute(alignments.insert(), chunk)
-                else:
-                    log.error(f"Can't find an up-to-date {self.filenames['reads_bam']} file")
-            except:
-                log.error(f"Failed to build database {self.filenames['reads_db']}")
+            build_reads_database(self.filenames['reads_bam'], self.filenames['reads_db'], self.contigs)
 
 
     def process_contigs(self):

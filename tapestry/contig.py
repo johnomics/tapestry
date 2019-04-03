@@ -200,17 +200,21 @@ class Contig:
         # Retrieve counts
         engine = create_engine(f"sqlite:///{self.filenames['reads_db']}")
         metadata = MetaData(engine)
+        reads = Table('reads', metadata, autoload=True, autoload_with=engine)
         alignments = Table('alignments', metadata, autoload=True, autoload_with=engine)
         conn = engine.connect()
-        stmt = select([alignments.columns.alntype, 
-                       func.count(alignments.columns.read).label('reads'), 
-                       func.sum(alignments.columns.aligned_length).label('aligned_length'),
-                       func.sum(alignments.columns.read_length).label('read_length')
+        stmt = (select([alignments.c.alntype, 
+                       func.count(alignments.c.read).label('reads'), 
+                       func.sum(alignments.c.aligned_length).label('aligned_length'),
+                       func.sum(reads.c.length).label('read_length')
                    ])
-        stmt = stmt.where(alignments.columns.contig == self.name)
-        stmt = stmt.group_by(alignments.columns.alntype)
+                .select_from(reads.join(alignments))
+                .where(alignments.c.contig == self.name)
+                .group_by(alignments.c.alntype)
+               )
+
         results = conn.execute(stmt).fetchall()
-        
+
         # Convert results to DataFrame
         count_bases = pd.DataFrame(results)
         if count_bases.empty:
