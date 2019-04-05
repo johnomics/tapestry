@@ -14,7 +14,7 @@ from sklearn.exceptions import ConvergenceWarning
 
 from Bio.SeqUtils import GC
 
-from .db import get_aligned_counts
+from .db import load_reads_database, get_aligned_counts, get_reads_from_region
 from .misc import grep, PAF, file_exists
 
 # Define process_contig at top level rather than in class so it works with multiprocessing
@@ -104,6 +104,7 @@ class Contig:
         self.tel_start, self.tel_end = self.num_telomeres()
         self.left_connectors, self.right_connectors = self.get_connectors()
         self.aligned_primary_pc, self.aligned_all_pc = self.get_read_alignment_stats()
+        self.assess_strength(5000, 2500)
 
 
     def completeness(self):
@@ -193,6 +194,7 @@ class Contig:
 
 
     def get_read_alignment_stats(self):
+        
         aligned_primary_bases = all_primary_bases = aligned_non_primary_bases = 0
 
         if file_exists(self.filenames['reads_db']):
@@ -351,3 +353,15 @@ class Contig:
                 right_connectors = self.get_region_connectors(bam, len(self)-10000, len(self)-1)
 
         return left_connectors, right_connectors
+
+    def assess_strength(self, region_width, region_step):
+        conn, db = load_reads_database(self.filenames['reads_db'])
+        regions = []
+        for region_start in range(0, len(self), region_step):
+            region_end = min(len(self), region_start + region_width)
+            through_reads, through_av_len, left_reads, left_av_clip, right_reads, right_av_clip = \
+                get_reads_from_region(conn, db, self.name, region_start, region_end)
+            regions.append([self.name, region_start, region_end, through_reads, through_av_len, left_reads, left_av_clip, right_reads, right_av_clip])
+            if region_end == len(self):
+                break
+        conn.close()

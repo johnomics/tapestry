@@ -6,7 +6,7 @@ from collections import namedtuple
 
 from sqlalchemy import create_engine, MetaData, Table, Column, ForeignKey, func
 from sqlalchemy import Integer, String, Boolean
-from sqlalchemy.sql import select
+from sqlalchemy.sql import select, and_
 
 from .misc import file_exists
 
@@ -173,11 +173,12 @@ def get_aligned_counts(db_filename, contig_name):
 
     conn, db = load_reads_database(db_filename)
     
-    stmt = (select([db.alignments.c.alntype, 
-                   func.count(db.alignments.c.read).label('reads'), 
-                   func.sum(db.alignments.c.aligned_length).label('aligned_length'),
-                   func.sum(db.reads.c.length).label('read_length')
-               ])
+    stmt = (select([
+                db.alignments.c.alntype, 
+                func.count(db.alignments.c.read).label('reads'), 
+                func.sum(db.alignments.c.aligned_length).label('aligned_length'),
+                func.sum(db.reads.c.length).label('read_length')
+            ])
             .select_from(db.reads.join(db.alignments))
             .where(db.alignments.c.contig == contig_name)
             .group_by(db.alignments.c.alntype)
@@ -197,6 +198,60 @@ def get_aligned_counts(db_filename, contig_name):
     for alntype in 'primary', 'secondary', 'supplementary':
         if alntype not in count_bases.index:
             count_bases.loc[alntype] = [0, 0, 0]
-    
+
     return count_bases
 
+
+def get_reads_from_region(conn, db, contig_name, region_start, region_end):
+    stmt = (select([
+                func.count(db.alignments.c.read),
+                func.avg(db.alignments.c.aligned_length)
+            ])
+            .where(and_(
+                     db.alignments.c.contig    == contig_name,
+                     db.alignments.c.ref_start <  region_start,
+                     db.alignments.c.ref_end   >  region_end,
+                     db.alignments.c.mq        == 60
+                ))
+           )
+    results = conn.execute(stmt).fetchall()
+    through_reads  = results[0][0]
+    through_av_len = results[0][1]
+
+    stmt = (select([
+                func.count(db.alignments.c.read),
+                func.avg(db.alignments.c.read_start)
+            ])
+            .where(and_(
+                     db.alignments.c.contig    == contig_name,
+                     db.alignments.c.ref_start <  region_start,
+                     db.alignments.c.ref_end   >  region_start,
+                     db.alignments.c.ref_end   <  region_end,
+                     db.alignments.c.mq        == 60
+                ))
+           )
+
+    results = conn.execute(stmt).fetchall()
+    left_reads = results[0][0]
+    left_avg_clip = results[0][1]
+
+    stmt = (select([
+                func.count(db.alignments.c.read),
+                func.avg(db.reads.c.length - db.alignments.c.read_end)
+            ])
+            .select_from(db.reads.join(db.alignments))
+            .where(and_(
+                     db.alignments.c.contig    == contig_name,
+                     db.alignments.c.ref_start >  region_start,
+                     db.alignments.c.ref_start <  region_end,
+                     db.alignments.c.ref_end   >  region_end,
+                     db.alignments.c.mq        == 60
+                ))
+           )
+
+    results = conn.execute(stmt).fetchall()
+    right_reads = results[0][0]
+    right_avg_clip = results[0][1]
+
+
+    return through_reads, through_av_len, left_reads, left_avg_clip, right_reads, right_avg_clip
