@@ -15,18 +15,17 @@ from jinja2 import Environment, FileSystemLoader
 from .assembly_plot import AssemblyPlot
 
 from .contig import Contig, process_contig, get_ploidy
-from .db import build_reads_database
+from .alignments import Alignments
 from .misc import flatten, cached_property, setup_output, include_file, report_folder, tapestry_tqdm, file_exists
 from .misc import minimap2, samtools, paftools, mosdepth, pigz
 
 filenames = {
     'assembly'         : 'assembly.fasta', 
-    'assembly_index'   : 'assembly.fasta.fai',
     'sampled_reads'    : 'reads.fastq.gz', 
     'reads_bam'        : 'reads_assembly.bam',
     'reads_index'      : 'reads_assembly.bam.bai',
     'reads_mosdepth'   : 'reads_assembly.regions.bed.gz',
-    'reads_db'         : 'aligned_reads.db',
+    'alignments'       : 'alignments.db',
     'contigs_bam'      : 'contigs_assembly.bam',
     'contigs_index'    : 'contigs_assembly.bam.bai',
     'contigs_paf'      : 'contigs_assembly.paf.gz',
@@ -58,6 +57,8 @@ class Assembly(AssemblyPlot):
             log.warning("No read file provided (-r), will skip read metrics unless previous analysis files exist")
 
         self.align_to_assembly('contigs')
+
+        self.alignments = self.load_alignments()
 
         self.process_contigs()
 
@@ -116,21 +117,7 @@ class Assembly(AssemblyPlot):
             log.error(f"Can't load assembly from file {self.assemblyfile}!")
             sys.exit()
 
-        self.index_assembly()
-
         return contigs
-
-
-    def index_assembly(self):
-        if file_exists(self.filenames['assembly_index'], deps=[self.filenames['assembly']]):
-           log.info(f"Will use existing {self.filenames['assembly_index']}")
-        else:
-            try:
-                log.info(f"Indexing assembly")
-                samtools("faidx", self.filenames['assembly'])
-            except:
-                log.error(f"Can't index assembly {self.filenames['assembly']}!")
-                sys.exit()
 
 
     def sample_reads(self):
@@ -241,10 +228,12 @@ class Assembly(AssemblyPlot):
         self.make_bam(aligntype)
         self.index_bam(aligntype)
         self.run_mosdepth(aligntype)
-        if aligntype=="contigs":
-            self.make_paf(aligntype)
-        elif aligntype=="reads":
-            build_reads_database(self.filenames['reads_bam'], self.filenames['reads_db'], self.contigs)
+
+
+    def load_alignments(self):
+        alignments = Alignments(self.filenames['alignments'])
+        alignments.load(self.filenames['reads_bam'], self.filenames['contigs_bam'], self.contigs)
+        return alignments
 
 
     def process_contigs(self):

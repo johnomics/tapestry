@@ -171,12 +171,9 @@ def set_verbosity(verbosity):
 
 
 def file_exists(filename, deps=[]):
-    file_exists = os.path.exists(filename)
-    for dep in deps:
-        if file_exists and dep is not None:
-            file_exists = os.stat(filename).st_mtime > os.stat(dep).st_mtime
-    return file_exists
-
+    return (os.path.exists(filename) and 
+             all([os.stat(filename).st_mtime > os.stat(dep).st_mtime for dep in deps])
+           )
 
 def flatten(l):
     return list(itertools.chain.from_iterable(l))

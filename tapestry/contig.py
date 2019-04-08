@@ -14,7 +14,7 @@ from sklearn.exceptions import ConvergenceWarning
 
 from Bio.SeqUtils import GC
 
-from .db import load_reads_database, get_aligned_counts, get_reads_from_region
+from .alignments import Alignments
 from .misc import grep, PAF, file_exists
 
 # Define process_contig at top level rather than in class so it works with multiprocessing
@@ -90,6 +90,9 @@ class Contig:
 
 
     def process(self):
+        # Alignments added here for multithreading
+        self.alignments = Alignments(self.filenames['alignments'])
+
         self.gc = self.get_gc()
         self.contig_depths = self.depths('contigs')
         self.read_depths = self.depths('reads')
@@ -104,8 +107,10 @@ class Contig:
         self.tel_start, self.tel_end = self.num_telomeres()
         self.left_connectors, self.right_connectors = self.get_connectors()
         self.aligned_primary_pc, self.aligned_all_pc = self.get_read_alignment_stats()
-        self.assess_strength(5000, 2500)
+#        self.assess_strength(5000, 2500)
 
+        # Alignments work is done; they cannot be pickled, so clean up before return
+        del(self.alignments)
 
     def completeness(self):
         completeness = ''
@@ -197,14 +202,11 @@ class Contig:
         
         aligned_primary_bases = all_primary_bases = aligned_non_primary_bases = 0
 
-        if file_exists(self.filenames['reads_db']):
-            count_bases = get_aligned_counts(self.filenames['reads_db'], self.name)
-            if count_bases is not None:
-                aligned_non_primary_bases = count_bases.loc['secondary','aligned_length'] + count_bases.loc['supplementary', 'aligned_length']
-                all_primary_bases = count_bases.loc['primary', 'read_length']
-                aligned_primary_bases = count_bases.loc['primary', 'aligned_length']
-        else:
-            log.info("No read database, so will return 0 for alignment percentages")
+        count_bases = self.alignments.get_contig_read_counts(self.name)
+        if count_bases is not None:
+            aligned_non_primary_bases = count_bases.loc['secondary','aligned_length'] + count_bases.loc['supplementary', 'aligned_length']
+            all_primary_bases = count_bases.loc['primary', 'read_length']
+            aligned_primary_bases = count_bases.loc['primary', 'aligned_length']
 
         all_aligned_bases = aligned_primary_bases + aligned_non_primary_bases
         
@@ -354,14 +356,14 @@ class Contig:
 
         return left_connectors, right_connectors
 
-    def assess_strength(self, region_width, region_step):
-        conn, db = load_reads_database(self.filenames['reads_db'])
-        regions = []
-        for region_start in range(0, len(self), region_step):
-            region_end = min(len(self), region_start + region_width)
-            through_reads, through_av_len, left_reads, left_av_clip, right_reads, right_av_clip = \
-                get_reads_from_region(conn, db, self.name, region_start, region_end)
-            regions.append([self.name, region_start, region_end, through_reads, through_av_len, left_reads, left_av_clip, right_reads, right_av_clip])
-            if region_end == len(self):
-                break
-        conn.close()
+#    def assess_strength(self, region_width, region_step):
+#        conn, db = load_reads_database(self.filenames['reads_db'])
+#        regions = []
+#        for region_start in range(0, len(self), region_step):
+#            region_end = min(len(self), region_start + region_width)
+#            through_reads, through_av_len, left_reads, left_av_clip, right_reads, right_av_clip = \
+#                get_reads_from_region(conn, db, self.name, region_start, region_end)
+#            regions.append([self.name, region_start, region_end, through_reads, through_av_len, left_reads, left_av_clip, right_reads, right_av_clip])
+#            if region_end == len(self):
+#                break
+#        conn.close()
