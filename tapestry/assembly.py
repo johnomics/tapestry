@@ -80,12 +80,12 @@ class Assembly(AssemblyPlot):
 
     @cached_property
     def read_depths(self):
-        return flatten([[d.depth for d in self.contigs[c].depths('reads')] for c in self.contigs])
+        return self.alignments.depths('read')['depth']
 
 
     @cached_property
     def median_depth(self):
-        return median(self.read_depths) if self.read_depths else 0
+        return self.read_depths.median() if self.read_depths is not None else 0
 
 
     @cached_property

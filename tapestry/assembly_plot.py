@@ -25,15 +25,15 @@ class AssemblyPlot:
 
     def depthplot_full(self):
         self._assemblyplot("read_depths_full", {
-                "data": [Scatter(x=[d.end for d in self.contigs[c].read_depths],
-                                 y=[d.depth for d in self.contigs[c].read_depths], 
+                "data": [Scatter(x=self.contigs[c].read_depths['end'],
+                                 y=self.contigs[c].read_depths['depth'], 
                                  name=self.contigs[c].name, mode='lines') for c in self.contiglist],
                 "layout": Layout(title="Contig Read Depths")
         })
 
     def depthplot_summary(self):
-        xnames     = flatten([[self.contigs[c].name]    * len(self.contigs[c].read_depths) for c in self.contiglist])
-        ydepths    = flatten([[d.depth for d in self.contigs[c].read_depths] for c in self.contiglist])
+        xnames     = flatten([[self.contigs[c].name]    * len(self.contigs[c].read_depths.index) for c in self.contiglist])
+        ydepths    = flatten([self.contigs[c].read_depths['depth'] for c in self.contiglist])
 
         self._assemblyplot("read_depths_summary", {
                 "data": [Scatter(x=xnames, y=ydepths, mode="markers", marker=dict(opacity=0.1))],

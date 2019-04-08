@@ -11,12 +11,13 @@ from sqlalchemy.sql import select, and_
 
 from .misc import file_exists
 
+
 class Alignments():
     def __init__(self, db_filename):
         self.db_filename = db_filename
         self.engine = create_engine(f'sqlite:///{db_filename}')
         self.metadata = MetaData(self.engine)
-        self.reads, self.contigs, self.alignments = self.tables()
+        self.reads, self.contigs, self.ranges, self.alignments = self.tables()
 
 
     def load(self, reads_bam, contigs_bam, reference):
@@ -31,8 +32,8 @@ class Alignments():
             self.metadata.create_all(self.engine)
 
             self.load_reference(reference)
-            self.load_alignments(reads_bam, 'read')
             self.load_alignments(contigs_bam, 'contig')
+            self.load_alignments(reads_bam, 'read')
 
 
     def tables(self):
@@ -44,6 +45,12 @@ class Alignments():
             Table('contigs', self.metadata,
                 Column('name', String, primary_key=True),
                 Column('length', Integer)
+            ),
+            Table('ranges', self.metadata,
+                Column('contig', String, ForeignKey('contigs.name')),
+                Column('width', Integer),
+                Column('start', Integer),
+                Column('end', Integer)
             ),
             Table('alignments', self.metadata,
                 Column('query', Integer, ForeignKey('reads.name')),
@@ -66,10 +73,25 @@ class Alignments():
         try:
             with self.engine.connect() as conn:
                 contig_rows = []
+                ranges_rows = []
                 for contig in reference:
+                    contig_length = len(reference[contig])
                     contig_rows.append({'name'  : reference[contig].name,
-                                        'length': len(reference[contig]   )})
+                                        'length': contig_length})
+            
+                    window_size = 5000
+                    for start in range(1, contig_length, int(window_size/2)):
+                        end = min(start + window_size - 1, contig_length)
+            
+                        ranges_rows.append({'contig' : reference[contig].name,
+                                           'width'  : window_size,
+                                           'start'  : start,
+                                           'end'    : end})
+                        if end == contig_length: # Skip remaining windows if last window already reaches end of contig
+                            break
+            
                 conn.execute(self.contigs.insert(), contig_rows)
+                conn.execute(self.ranges.insert(), ranges_rows)
         except:
             log.error(f"Failed to add assembly to alignments database {self.db_filename}")
 
@@ -204,6 +226,43 @@ class Alignments():
                 count_bases.loc[alntype] = [0, 0, 0]
 
         return count_bases
+
+
+    def depths(self, query_type, contig_name=''):
+        with self.engine.connect() as conn:
+
+            # Calculate read depths by region
+            rd = (select([self.ranges.c.contig, self.ranges.c.start, func.count(self.alignments.c.query).label('depth')])
+                  .select_from(self.ranges.join(self.alignments,
+                      self.ranges.c.contig == self.alignments.c.contig))
+                  .where(and_(
+                      self.alignments.c.contig.like(contig_name+"%"), # like allows empty string as well as name
+                      self.alignments.c.querytype == query_type,
+                      self.alignments.c.ref_start <= self.ranges.c.start,
+                      self.alignments.c.ref_end   >= self.ranges.c.end
+                  ))
+                  .group_by(self.ranges.c.contig, self.ranges.c.start)
+                  .alias()
+                )
+
+            # Combine with ranges table again to fill empty regions
+            stmt = (select([self.ranges.c.contig, self.ranges.c.start, self.ranges.c.end, rd.c.depth])
+                    .select_from(self.ranges.outerjoin(rd,
+                        and_(self.ranges.c.contig == rd.c.contig,self.ranges.c.start == rd.c.start)
+                    ))
+                    .where(self.ranges.c.contig.like(contig_name+"%"))
+                   )
+
+            results = conn.execute(stmt).fetchall()
+        
+        # Convert results to DataFrame
+        depths = pd.DataFrame(results)
+        if depths.empty:
+            return None
+        depths.columns =  results[0].keys()
+        depths = depths.fillna(1).reset_index()
+
+        return depths
 
 
 def get_reads_from_region(conn, db, contig_name, region_start, region_end):

@@ -5,7 +5,6 @@ import numpy as np
 import pysam
 
 from collections import namedtuple, defaultdict
-from statistics import mean, median
 
 from intervaltree import Interval, IntervalTree
 
@@ -25,8 +24,6 @@ def process_contig(contig):
 def get_ploidy(contig, median_depth=None):
     contig.ploidys = contig.get_ploidys(median_depth)
     return contig
-
-DepthRecord = namedtuple('DepthRecord', 'start, end, depth')
 
 
 class Contig:
@@ -94,8 +91,8 @@ class Contig:
         self.alignments = Alignments(self.filenames['alignments'])
 
         self.gc = self.get_gc()
-        self.contig_depths = self.depths('contigs')
-        self.read_depths = self.depths('reads')
+        self.read_depths = self.alignments.depths('read', self.name)
+        self.contig_depths = self.alignments.depths('contig', self.name)
         self.mean_contig_depth = self.mean_depth(self.contig_depths)
         self.mean_read_depth = self.mean_depth(self.read_depths)
         self.median_read_depth = self.median_depth(self.read_depths)
@@ -144,22 +141,12 @@ class Contig:
         return GC(self.rec.seq)
 
 
-    def depths(self, mapped):
-        depths=[]
-        if os.path.exists(f"{self.outdir}/{mapped}_assembly.regions.bed.gz"):
-            for line in grep(f"^{self.name}", f"{self.outdir}/{mapped}_assembly.regions.bed.gz"): # Lose final empty line with :-1
-                contigname, start, end, depth = line.split('\t')
-                depths.append(DepthRecord(start=int(start), end=int(end), depth=float(depth))) 
-        return depths
-
-
     def mean_depth(self, depths):
-        return mean([d.depth for d in depths]) if depths else 0
+        return depths['depth'].mean() if depths is not None else 0
 
 
     def median_depth(self, depths):
-        depths = [d.depth for d in depths]
-        return median(depths) if depths else 0
+        return depths['depth'].median() if depths is not None else 0
 
 
     def get_read_overhang(self, bam, start, end, overhang_function):
@@ -274,7 +261,7 @@ class Contig:
             return ploidys
 
         model = mixture.BayesianGaussianMixture(n_components=components, max_iter=1000)
-        depths = np.array([d.depth for d in self.read_depths]).reshape(-1,1)
+        depths = np.array(self.read_depths['depth']).reshape(-1,1)
         warnings.filterwarnings("ignore", category=ConvergenceWarning)
         model.fit(depths)
         warnings.resetwarnings()
