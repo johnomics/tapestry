@@ -196,21 +196,21 @@ class Alignments():
 
     def get_contig_read_counts(self, contig_name):
 
-        with self.engine.connect() as conn:
-            stmt = (select([
-                        self.alignments.c.alntype, 
-                        func.count(self.alignments.c.query).label('reads'), 
-                        func.sum(self.alignments.c.aligned_length).label('aligned_length'),
-                        func.sum(self.reads.c.length).label('read_length')
-                    ])
-                    .select_from(self.reads.join(self.alignments))
-                    .where(and_(
-                        self.alignments.c.querytype == 'read',
-                        self.alignments.c.contig == contig_name
-                        ))
-                    .group_by(self.alignments.c.alntype)
-                   )
+        stmt = (select([
+                    self.alignments.c.alntype, 
+                    func.count(self.alignments.c.query).label('reads'), 
+                    func.sum(self.alignments.c.aligned_length).label('aligned_length'),
+                    func.sum(self.reads.c.length).label('read_length')
+                ])
+                .select_from(self.reads.join(self.alignments))
+                .where(and_(
+                    self.alignments.c.querytype == 'read',
+                    self.alignments.c.contig == contig_name
+                    ))
+                .group_by(self.alignments.c.alntype)
+               )
 
+        with self.engine.connect() as conn:
             results = conn.execute(stmt).fetchall()
 
         # Convert results to DataFrame
@@ -229,31 +229,53 @@ class Alignments():
 
 
     def depths(self, query_type, contig_name=''):
-        with self.engine.connect() as conn:
 
-            # Calculate read depths by region
-            rd = (select([self.ranges.c.contig, self.ranges.c.start, func.count(self.alignments.c.query).label('depth')])
-                  .select_from(self.ranges.join(self.alignments,
-                      self.ranges.c.contig == self.alignments.c.contig))
-                  .where(and_(
-                      self.alignments.c.contig.like(contig_name+"%"), # like allows empty string as well as name
-                      self.alignments.c.querytype == query_type,
-                      self.alignments.c.ref_start <= self.ranges.c.start,
-                      self.alignments.c.ref_end   >= self.ranges.c.end
-                  ))
-                  .group_by(self.ranges.c.contig, self.ranges.c.start)
-                  .alias()
-                )
+        # Get read depths for each region
+        rd = (select([
+                self.ranges.c.contig, 
+                self.ranges.c.start, 
+                func.count(self.alignments.c.query).label('depth')
+             ])
+              .select_from(self.ranges.join(self.alignments,
+                  self.ranges.c.contig == self.alignments.c.contig))
+             )
 
-            # Combine with ranges table again to fill empty regions
-            stmt = (select([self.ranges.c.contig, self.ranges.c.start, self.ranges.c.end, rd.c.depth])
-                    .select_from(self.ranges.outerjoin(rd,
-                        and_(self.ranges.c.contig == rd.c.contig,self.ranges.c.start == rd.c.start)
-                    ))
-                    .where(self.ranges.c.contig.like(contig_name+"%"))
-                   )
+        # Filter by contig, query type and region
+        # like match for contig allows empty string (whole genome) as well as name
+        
+        #                    RangeStart        RangeEnd                              ReadStart <= RangeEnd  ReadEnd >= RangeStart  And
+        #   ReadStart ReadEnd                                                No      True                   False                  False
+        #   ReadStart                   ReadEnd                              Yes     True                   True                   True
+        #   ReadStart                                     ReadEnd            Yes     True                   True                   True
+        #                        ReadStart ReadEnd                           Yes     True                   True                   True
+        #                               ReadStart         ReadEnd            Yes     True                   True                   False
+        #                                                 ReadStart ReadEnd  No      False                  True                   False
+ 
+        rdf = rd.where(and_(
+                  self.alignments.c.contig.like(contig_name+"%"),
+                  self.alignments.c.querytype == query_type,
+                  self.alignments.c.ref_start <= self.ranges.c.end,
+                  self.alignments.c.ref_end   >= self.ranges.c.start
+              ))
 
-            results = conn.execute(stmt).fetchall()
+        # Group by regions and make alias for column reference below
+        rdg = rdf.group_by(self.ranges.c.contig, self.ranges.c.start).alias()
+
+        # Combine with ranges table again to fill empty regions
+        stmt = (select([
+                    self.ranges.c.contig, 
+                    self.ranges.c.start, 
+                    self.ranges.c.end, 
+                    rdg.c.depth])
+                .select_from(
+                    self.ranges.outerjoin(rdg,
+                        and_(self.ranges.c.contig == rdg.c.contig,
+                             self.ranges.c.start == rdg.c.start)
+                ))
+                .where(self.ranges.c.contig.like(contig_name+"%"))
+               )
+
+        results = self.engine.connect().execute(stmt).fetchall()
         
         # Convert results to DataFrame
         depths = pd.DataFrame(results)
