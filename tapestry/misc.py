@@ -8,8 +8,7 @@ from tqdm import tqdm
 from plumbum import local, CommandNotFound
 
 failed = []
-tools = {'paftools':'paftools.js',
-         'minimap2':'minimap2', 
+tools = {'minimap2':'minimap2', 
          'samtools':'samtools', 
          'zgrep':'zgrep', 
          'pigz':'pigz',
@@ -35,23 +34,6 @@ if failed:
 report_folder = pkg_resources.resource_filename(__name__, 'report')
 
 tapestry_tqdm = partial(tqdm, unit=" contig", leave=False, miniters=1, dynamic_ncols=True)
-
-class PAF:
-    def __init__(self, pafline):
-        f = pafline.rstrip().split('\t')
-        self.query_name      = f[0]
-        self.query_length    = int(f[1])
-        self.query_start     = int(f[2])
-        self.query_end       = int(f[3])
-        self.strand          = f[4]
-        self.subject_name     = f[5]
-        self.subject_length   = int(f[6])
-        self.subject_start    = int(f[7])
-        self.subject_end      = int(f[8])
-        self.matches         = int(f[9])
-        self.block_length    = int(f[10])
-        self.mapping_quality = int(f[11])
-
 
 def get_args(arglist=[], description="", scriptargs=[]):
 
@@ -143,11 +125,6 @@ def versions(verbosity=2):
         debug += f"minimap2\t{minimap2('--version').rstrip()}\t{minimap2}\n"
     else:
         debug += f"minimap2\tMISSING\n"
-
-    if 'paftools' in globals():
-        debug += f"paftools\t{paftools('version').rstrip()}\t{paftools}\n"
-    else:
-        debug += f"paftools\tMISSING\n"
 
     samtools_version = samtools['--version'] | head['-n 1'] | cut['-d ', '-f2']
     debug += f"samtools\t{samtools_version().rstrip()}\t{samtools}\n"

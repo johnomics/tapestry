@@ -17,7 +17,7 @@ from .assembly_plot import AssemblyPlot
 from .contig import Contig, process_contig, get_ploidy
 from .alignments import Alignments
 from .misc import flatten, cached_property, setup_output, include_file, report_folder, tapestry_tqdm, file_exists
-from .misc import minimap2, samtools, paftools, pigz
+from .misc import minimap2, samtools
 
 filenames = {
     'assembly'         : 'assembly.fasta', 
@@ -187,22 +187,6 @@ class Assembly(AssemblyPlot):
                 samtools("index", f"-@{self.cores-1}", bam_filename)
             except:
                 log.error(f"Failed to index {bam_filename}")
-
-
-    def make_paf(self, aligntype):
-        paf_filename = self.filenames[f"{aligntype}_paf"]
-        bam_filename = self.filenames[f"{aligntype}_bam"]
-        if file_exists(paf_filename, deps=[bam_filename]):
-            log.info(f"Will use existing {paf_filename}")
-        else:
-            try:
-                log.info(f"Converting {bam_filename} to {paf_filename}")
-                samtopaf = (samtools["view", "-h", bam_filename] | \
-                           paftools["sam2paf", "-"] | pigz[f"-p{self.cores}"] > paf_filename)
-                samtopaf()
-            except:
-                log.error(f"Failed to convert {bam_filename} to {paf_filename}")
-                sys.exit()
 
 
     def align_to_assembly(self, aligntype):
