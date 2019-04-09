@@ -10,7 +10,6 @@ from plumbum import local, CommandNotFound
 failed = []
 tools = {'paftools':'paftools.js',
          'minimap2':'minimap2', 
-         'mosdepth':'mosdepth', 
          'samtools':'samtools', 
          'zgrep':'zgrep', 
          'pigz':'pigz',
@@ -152,9 +151,6 @@ def versions(verbosity=2):
 
     samtools_version = samtools['--version'] | head['-n 1'] | cut['-d ', '-f2']
     debug += f"samtools\t{samtools_version().rstrip()}\t{samtools}\n"
-
-    mosdepth_version = mosdepth['-h'] | head['-n 1'] | cut['-d ', '-f2']
-    debug += f"mosdepth\t{mosdepth_version().rstrip()}\t{mosdepth}\n"
 
     set_verbosity(verbosity) # Reset logger now plumbum commands are done
 

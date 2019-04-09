@@ -151,8 +151,9 @@ class Contig:
 
     def get_read_overhangs(self):
 
-        start_overhangs = self.alignments.get_start_overhangs(self.name, 1, min(1000, len(self)))
-        end_overhangs   = self.alignments.get_end_overhangs(self.name, max(len(self)-1000, 1), len(self))
+        aligned_length = min(20000, len(self)*0.9)
+        start_overhangs = self.alignments.get_start_overhangs(self.name, 1, min(2000, len(self)), aligned_length)
+        end_overhangs   = self.alignments.get_end_overhangs(self.name, max(len(self)-2000, 1), len(self), aligned_length)
 
         mean_start_overhang = int(mean(start_overhangs)) if start_overhangs else None
         mean_end_overhang   = int(mean(end_overhangs)) if end_overhangs else None

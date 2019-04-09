@@ -308,7 +308,7 @@ class Alignments():
         return depths
 
 
-    def get_start_overhangs(self, contig_name, region_start, region_end):
+    def get_start_overhangs(self, contig_name, region_start, region_end, aligned_length=0):
         stmt = (select([
                     region_start - (self.alignments.c.ref_start - self.alignments.c.left_clip)
                 ])
@@ -316,7 +316,7 @@ class Alignments():
                             self.alignments.c.ref_start.between(region_start, region_end),
                             self.alignments.c.contig.like(contig_name + "%"),
                             self.alignments.c.querytype == 'read',
-                            self.alignments.c.mq == 60
+                            self.alignments.c.aligned_length > aligned_length
                         ))
                 )
 
@@ -328,7 +328,7 @@ class Alignments():
         return overhangs
 
 
-    def get_end_overhangs(self, contig_name, region_start, region_end):
+    def get_end_overhangs(self, contig_name, region_start, region_end, aligned_length=0):
         stmt = (select([
                     self.alignments.c.ref_end + self.alignments.c.right_clip - region_end
                 ])
@@ -336,7 +336,7 @@ class Alignments():
                             self.alignments.c.ref_end.between(region_start, region_end),
                             self.alignments.c.contig.like(contig_name + "%"),
                             self.alignments.c.querytype == 'read',
-                            self.alignments.c.mq == 60
+                            self.alignments.c.aligned_length > aligned_length
                         ))
                 )
 

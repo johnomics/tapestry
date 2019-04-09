@@ -17,19 +17,17 @@ from .assembly_plot import AssemblyPlot
 from .contig import Contig, process_contig, get_ploidy
 from .alignments import Alignments
 from .misc import flatten, cached_property, setup_output, include_file, report_folder, tapestry_tqdm, file_exists
-from .misc import minimap2, samtools, paftools, mosdepth, pigz
+from .misc import minimap2, samtools, paftools, pigz
 
 filenames = {
     'assembly'         : 'assembly.fasta', 
     'sampled_reads'    : 'reads.fastq.gz', 
     'reads_bam'        : 'reads_assembly.bam',
     'reads_index'      : 'reads_assembly.bam.bai',
-    'reads_mosdepth'   : 'reads_assembly.regions.bed.gz',
     'alignments'       : 'alignments.db',
     'contigs_bam'      : 'contigs_assembly.bam',
     'contigs_index'    : 'contigs_assembly.bam.bai',
     'contigs_paf'      : 'contigs_assembly.paf.gz',
-    'contigs_mosdepth' : 'contigs_assembly.regions.bed.gz'
 }
 
 
@@ -207,27 +205,9 @@ class Assembly(AssemblyPlot):
                 sys.exit()
 
 
-    def run_mosdepth(self, aligntype):
-        mos_filename = self.filenames[f'{aligntype}_mosdepth']
-        bam_filename = self.filenames[f'{aligntype}_bam']
-        if file_exists(mos_filename, deps=[bam_filename]):
-            log.info(f"Will use existing {mos_filename} mosdepth output")
-            return
-
-        try:
-            log.info(f"Running mosdepth for {aligntype}")
-            mosdepth("-b1000", "-n", \
-                     f"{self.outdir}/{aligntype}_assembly", \
-                     bam_filename)
-        except:
-            log.error(f"Failed to run mosdepth for {bam_filename}")
-            sys.exit()
-
-
     def align_to_assembly(self, aligntype):
         self.make_bam(aligntype)
         self.index_bam(aligntype)
-        self.run_mosdepth(aligntype)
 
 
     def load_alignments(self):
