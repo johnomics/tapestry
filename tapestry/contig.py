@@ -1,4 +1,5 @@
 import os, re, warnings
+from statistics import mean
 from collections import namedtuple, defaultdict
 
 import numpy as np
@@ -148,28 +149,13 @@ class Contig:
         return depths['depth'].median() if depths is not None else 0
 
 
-    def get_read_overhang(self, bam, start, end, overhang_function):
-        num_reads = overhang_bases = 0
-        for aln in bam.fetch(self.name, start, end):
-            num_reads += 1
-            overhang = overhang_function(aln)
-            if overhang > 0:
-                overhang_bases += overhang
-        mean_overhang = int(overhang_bases / num_reads) if num_reads > 0 else None
-        return mean_overhang
-
-
     def get_read_overhangs(self):
-        mean_start_overhang = mean_end_overhang = 0
-        if os.path.exists(f"{self.outdir}/reads_assembly.bam"):
-            bam = pysam.AlignmentFile(f"{self.outdir}/reads_assembly.bam", 'rb')
 
-            mean_start_overhang = self.get_read_overhang(
-                    bam, 0, min(1000, len(self)),
-                    lambda aln: aln.query_alignment_start-aln.reference_start)
-            mean_end_overhang = self.get_read_overhang(
-                    bam, max(len(self)-1001,0), len(self)-1,
-                    lambda aln: (aln.query_length - aln.query_alignment_end) - (len(self) - aln.reference_end))
+        start_overhangs = self.alignments.get_start_overhangs(self.name, 1, min(1000, len(self)))
+        end_overhangs   = self.alignments.get_end_overhangs(self.name, max(len(self)-1000, 1), len(self))
+
+        mean_start_overhang = int(mean(start_overhangs)) if start_overhangs else None
+        mean_end_overhang   = int(mean(end_overhangs)) if end_overhangs else None
 
         return mean_start_overhang, mean_end_overhang
 

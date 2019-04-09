@@ -53,7 +53,7 @@ class Alignments():
                 Column('end', Integer)
             ),
             Table('alignments', self.metadata,
-                Column('query', Integer, ForeignKey('reads.name')),
+                Column('query', Integer),
                 Column('querytype', String),
                 Column('alntype', Integer),
                 Column('contig', String, ForeignKey('contigs.name')),
@@ -64,7 +64,9 @@ class Alignments():
                 Column('ref_length', Integer),
                 Column('query_start', Integer),
                 Column('query_end', Integer),
-                Column('aligned_length', Integer)
+                Column('aligned_length', Integer),
+                Column('left_clip', Integer),
+                Column('right_clip', Integer),
             )
         ]
 
@@ -120,7 +122,8 @@ class Alignments():
         for aln in bam.fetch(until_eof=True): # until_eof includes unmapped reads
             alntype                      = self.get_alignment_type(aln)
             query_length, aligned_length = self.get_alignment_lengths(aln, alntype)
-            query_start, query_end       = self.get_query_ends(aln, alntype, query_length)
+
+            query_start, query_end, left_clip, right_clip = self.get_query_ends(aln, alntype, query_length)
         
             if query_type is 'read' and aln.query_name not in read_names:
                 read_names[aln.query_name] = True
@@ -138,6 +141,8 @@ class Alignments():
                 'ref_length': aln.reference_length,
                 'query_start': query_start,
                 'query_end': query_end,
+                'left_clip': left_clip,
+                'right_clip': right_clip,
                 'aligned_length': aligned_length
             })
 
@@ -173,7 +178,7 @@ class Alignments():
     def get_query_ends(self, aln, alntype, query_length):
         query_start = query_end = None
         if alntype is 'unmapped':
-            return query_start, query_end
+            return query_start, query_end, None, None
         first_clip_length = self.get_clip_lengths(aln.cigartuples[0])
         last_clip_length  = self.get_clip_lengths(aln.cigartuples[-1])
 
@@ -184,7 +189,7 @@ class Alignments():
             query_start = 1 + first_clip_length
             query_end = query_length - last_clip_length
 
-        return query_start, query_end
+        return query_start, query_end, first_clip_length, last_clip_length
 
 
     def get_clip_lengths(self, cigartuple):
@@ -218,7 +223,7 @@ class Alignments():
                     func.sum(self.alignments.c.aligned_length).label('aligned_length'),
                     func.sum(self.reads.c.length).label('read_length')
                 ])
-                .select_from(self.reads.join(self.alignments))
+                .select_from(self.reads.join(self.alignments, self.reads.c.name == self.alignments.c.query))
                 .where(and_(
                     self.alignments.c.querytype == 'read',
                     self.alignments.c.contig == contig_name
@@ -244,6 +249,23 @@ class Alignments():
         return count_bases
 
 
+#                    RegionStart        RegionEnd                   ReadStart <= RegionEnd ReadEnd >= RegionStart And
+#   ReadStart ReadEnd                                               True                   False                  False
+#   ReadStart                   ReadEnd                             True                   True                   True
+#   ReadStart                                     ReadEnd           True                   True                   True
+#                        ReadStart ReadEnd                          True                   True                   True
+#                               ReadStart         ReadEnd           True                   True                   True
+#                                                 ReadStart ReadEnd False                  True                   False
+
+    def alignments_in_region(self, query, contig_name, query_type, region_start, region_end):
+        return query.where(and_(
+            self.alignments.c.contig.like(contig_name + "%"),
+            self.alignments.c.querytype == query_type,
+            self.alignments.c.ref_start <= region_end,
+            self.alignments.c.ref_end   >= region_start
+        ))
+
+
     def depths(self, query_type, contig_name=''):
 
         # Get read depths for each region
@@ -252,27 +274,10 @@ class Alignments():
                 self.ranges.c.start, 
                 func.count(self.alignments.c.query).label('depth')
              ])
-              .select_from(self.ranges.join(self.alignments,
-                  self.ranges.c.contig == self.alignments.c.contig))
+              .select_from(self.ranges.join(self.alignments, self.ranges.c.contig == self.alignments.c.contig))
              )
 
-        # Filter by contig, query type and region
-        # like match for contig allows empty string (whole genome) as well as name
-        
-        #                    RangeStart        RangeEnd                              ReadStart <= RangeEnd  ReadEnd >= RangeStart  And
-        #   ReadStart ReadEnd                                                No      True                   False                  False
-        #   ReadStart                   ReadEnd                              Yes     True                   True                   True
-        #   ReadStart                                     ReadEnd            Yes     True                   True                   True
-        #                        ReadStart ReadEnd                           Yes     True                   True                   True
-        #                               ReadStart         ReadEnd            Yes     True                   True                   False
-        #                                                 ReadStart ReadEnd  No      False                  True                   False
- 
-        rdf = rd.where(and_(
-                  self.alignments.c.contig.like(contig_name+"%"),
-                  self.alignments.c.querytype == query_type,
-                  self.alignments.c.ref_start <= self.ranges.c.end,
-                  self.alignments.c.ref_end   >= self.ranges.c.start
-              ))
+        rdf = self.alignments_in_region(rd, contig_name, query_type, self.ranges.c.start, self.ranges.c.end)
 
         # Group by regions and make alias for column reference below
         rdg = rdf.group_by(self.ranges.c.contig, self.ranges.c.start).alias()
@@ -301,6 +306,46 @@ class Alignments():
         depths = depths.fillna(0).reset_index()
 
         return depths
+
+
+    def get_start_overhangs(self, contig_name, region_start, region_end):
+        stmt = (select([
+                    region_start - (self.alignments.c.ref_start - self.alignments.c.left_clip)
+                ])
+                .where(and_(
+                            self.alignments.c.ref_start.between(region_start, region_end),
+                            self.alignments.c.contig.like(contig_name + "%"),
+                            self.alignments.c.querytype == 'read',
+                            self.alignments.c.mq == 60
+                        ))
+                )
+
+        with self.engine.connect() as conn:
+            results = conn.execute(stmt).fetchall()
+
+        overhangs = [o[0] for o in results if o[0]>0]
+
+        return overhangs
+
+
+    def get_end_overhangs(self, contig_name, region_start, region_end):
+        stmt = (select([
+                    self.alignments.c.ref_end + self.alignments.c.right_clip - region_end
+                ])
+                .where(and_(
+                            self.alignments.c.ref_end.between(region_start, region_end),
+                            self.alignments.c.contig.like(contig_name + "%"),
+                            self.alignments.c.querytype == 'read',
+                            self.alignments.c.mq == 60
+                        ))
+                )
+
+        with self.engine.connect() as conn:
+            results = conn.execute(stmt).fetchall()
+
+        overhangs = [o[0] for o in results if o[0]>0]
+
+        return overhangs
 
 
 def get_reads_from_region(conn, db, contig_name, region_start, region_end):
