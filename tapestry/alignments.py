@@ -347,57 +347,26 @@ class Alignments():
 
         return overhangs
 
+    def threads(self, contig):
+        stmt = (select([
+            self.alignments.c.ref_start,
+            self.alignments.c.ref_end,
+            self.alignments.c.left_clip,
+            self.alignments.c.right_clip,
+            self.alignments.c.mq
+        ])
+        .select_from(self.reads.join(self.alignments, self.reads.c.name == self.alignments.c.query))
+        .where(and_(
+                self.alignments.c.contig == contig,
+                self.alignments.c.alntype != "secondary"
+              ))
+        )
 
-def get_reads_from_region(conn, db, contig_name, region_start, region_end):
-    stmt = (select([
-                func.count(db.alignments.c.read),
-                func.avg(db.alignments.c.aligned_length)
-            ])
-            .where(and_(
-                     db.alignments.c.contig    == contig_name,
-                     db.alignments.c.ref_start <  region_start,
-                     db.alignments.c.ref_end   >  region_end,
-                     db.alignments.c.mq        == 60
-                ))
-           )
-    results = conn.execute(stmt).fetchall()
-    through_reads  = results[0][0]
-    through_av_len = results[0][1]
+        with self.engine.connect() as conn:
+            results = conn.execute(stmt).fetchall()
 
-    stmt = (select([
-                func.count(db.alignments.c.read),
-                func.avg(db.alignments.c.read_start)
-            ])
-            .where(and_(
-                     db.alignments.c.contig    == contig_name,
-                     db.alignments.c.ref_start <  region_start,
-                     db.alignments.c.ref_end   >  region_start,
-                     db.alignments.c.ref_end   <  region_end,
-                     db.alignments.c.mq        == 60
-                ))
-           )
-
-    results = conn.execute(stmt).fetchall()
-    left_reads = results[0][0]
-    left_avg_clip = results[0][1]
-
-    stmt = (select([
-                func.count(db.alignments.c.read),
-                func.avg(db.reads.c.length - db.alignments.c.read_end)
-            ])
-            .select_from(db.reads.join(db.alignments))
-            .where(and_(
-                     db.alignments.c.contig    == contig_name,
-                     db.alignments.c.ref_start >  region_start,
-                     db.alignments.c.ref_start <  region_end,
-                     db.alignments.c.ref_end   >  region_end,
-                     db.alignments.c.mq        == 60
-                ))
-           )
-
-    results = conn.execute(stmt).fetchall()
-    right_reads = results[0][0]
-    right_avg_clip = results[0][1]
-
-
-    return through_reads, through_av_len, left_reads, left_avg_clip, right_reads, right_avg_clip
+        alignments = pd.DataFrame(results)
+        if alignments.empty:
+            return None
+        alignments.columns =  results[0].keys()
+        return alignments

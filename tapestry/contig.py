@@ -1,5 +1,6 @@
 import os, re, warnings
 from statistics import mean
+from math import sin, cos
 from collections import namedtuple, defaultdict
 
 import numpy as np
@@ -104,7 +105,7 @@ class Contig:
         self.tel_start, self.tel_end = self.num_telomeres()
         self.left_connectors, self.right_connectors = self.get_connectors()
         self.aligned_primary_pc, self.aligned_all_pc = self.get_read_alignment_stats()
-#        self.assess_strength(5000, 2500)
+        self.threads = self.plot_threads()
 
         # Alignments work is done; they cannot be pickled, so clean up before return
         del(self.alignments)
@@ -324,14 +325,27 @@ class Contig:
 
         return left_connectors, right_connectors
 
-#    def assess_strength(self, region_width, region_step):
-#        conn, db = load_reads_database(self.filenames['reads_db'])
-#        regions = []
-#        for region_start in range(0, len(self), region_step):
-#            region_end = min(len(self), region_start + region_width)
-#            through_reads, through_av_len, left_reads, left_av_clip, right_reads, right_av_clip = \
-#                get_reads_from_region(conn, db, self.name, region_start, region_end)
-#            regions.append([self.name, region_start, region_end, through_reads, through_av_len, left_reads, left_av_clip, right_reads, right_av_clip])
-#            if region_end == len(self):
-#                break
-#        conn.close()
+
+    def get_clip_pos(self, length, angle=150):
+        height = abs(length * sin(angle))
+        width  = length * cos(angle)
+        return height, width
+
+
+    def plot_threads(self, angle=150):
+        threads = []
+        for i, row in self.alignments.threads(self.name).iterrows():
+            start_clip_height, start_clip_width = self.get_clip_pos(row.left_clip, angle)
+            end_clip_height, end_clip_width     = self.get_clip_pos(row.right_clip, angle)
+
+            # int conversion required because Pandas uses numpy int64, which json doesn't understand
+            threads.append([int(x) for x in
+                                [start_clip_height,                # clip start y pos
+                                 row.ref_start - start_clip_width, # clip start x pos
+                                 row.ref_start,                    # contig alignment start
+                                 row.ref_end,                      # contig alignment end
+                                 end_clip_height,                  # clip end y pos
+                                 row.ref_end + end_clip_width,     # clip end
+                                 row.mq                            # mapping quality
+                           ]])
+        return threads

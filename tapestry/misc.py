@@ -64,11 +64,6 @@ def get_args(arglist=[], description="", scriptargs=[]):
         log.error("Must specify at least one core")
         sys.exit()
 
-    cores_available = len(os.sched_getaffinity(0)) # https://docs.python.org/3/library/os.html#os.cpu_count
-    if args.cores > cores_available:
-        log.error(f"{args.cores} cores requested but only {cores_available} available, please reduce cores")
-        sys.exit()
-
     return args
 
 
