@@ -79,7 +79,7 @@ class Alignments():
                     contig_rows.append({'name'  : reference[contig].name,
                                         'length': contig_length})
             
-                    window_size = 5000
+                    window_size = 2000
                     for start in range(1, contig_length, int(window_size/2)):
                         end = min(start + window_size - 1, contig_length)
             
@@ -194,8 +194,24 @@ class Alignments():
         return cigar_length
 
 
-    def get_contig_read_counts(self, contig_name):
+    def get_contig_alignments(self, contig_name):
+        stmt = (select([
+                    self.alignments.c.ref_start,
+                    self.alignments.c.ref_end 
+                ])
+                .where(and_(
+                    self.alignments.c.querytype == 'contig',
+                    self.alignments.c.contig == contig_name
+                    ))
+               )
 
+        with self.engine.connect() as conn:
+            results = conn.execute(stmt).fetchall()
+
+        return results
+
+
+    def get_contig_read_counts(self, contig_name):
         stmt = (select([
                     self.alignments.c.alntype, 
                     func.count(self.alignments.c.query).label('reads'), 
@@ -282,7 +298,7 @@ class Alignments():
         if depths.empty:
             return None
         depths.columns =  results[0].keys()
-        depths = depths.fillna(1).reset_index()
+        depths = depths.fillna(0).reset_index()
 
         return depths
 

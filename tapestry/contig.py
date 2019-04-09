@@ -1,10 +1,9 @@
 import os, re, warnings
+from collections import namedtuple, defaultdict
 
 import numpy as np
 
 import pysam
-
-from collections import namedtuple, defaultdict
 
 from intervaltree import Interval, IntervalTree
 
@@ -209,13 +208,8 @@ class Contig:
     def get_contig_alignments(self):
         alignments = IntervalTree()
         alignments[1:len(self)] = 1
-        if os.path.exists(f"{self.outdir}/contigs_assembly.paf.gz"):
-            for line in grep(f"{self.name}", f"{self.outdir}/contigs_assembly.paf.gz"):
-                alignment = PAF(line)
-                if alignment.query_name == self.name:
-                    alignments[alignment.query_start:alignment.query_end] = 1
-                if alignment.subject_name == self.name:
-                    alignments[alignment.subject_start:alignment.subject_end] = 1
+        for start, end in self.alignments.get_contig_alignments(self.name):
+            alignments[start:end+1] = 1
         return alignments
 
 
