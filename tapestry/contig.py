@@ -64,7 +64,8 @@ class Contig:
     def json(self):
         return {
             'cluster': self.cluster,
-            'name': self.name,
+            'longname' : self.name,
+            'name': self.name.split('_')[-1], # Remove assembly name
             'length': len(self),
             'gc': self.gc,
             'tel_start': self.tel_start,

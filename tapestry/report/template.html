@@ -10,15 +10,6 @@
   
   <style type="text/css">{{ include_file('static/bootstrap.min.css') }}</style>
   <style type="text/css">{{ include_file('static/bootstrap-table.min.css') }}</style>
-  <script type="text/javascript">{{ include_file('static/jquery-3.3.1.min.js') }}</script>
-  <script type="text/javascript">{{ include_file('static/bootstrap.min.js') }}</script>
-  <script type="text/javascript">{{ include_file('static/bootstrap-table.min.js') }}</script>
-  <script type="text/javascript">{{ include_file('static/d3.min.js') }}</script>
-  
-  <script type="text/javascript">
-    var contigs = {{ contigs }};
-    var threads = {{ threads }};
-  </script>
 </head>
 
 <body>
@@ -38,106 +29,10 @@
 
     <div id="contig_length_plot">
       <h2 id="page_title">Contig Lengths</h2>
-      <script>
-        var plotWidth = 600;
-        var plotHeight = 300;
-        var xScale = d3.scaleLinear()
-                       .domain([0, d3.max(contigs, function(d) { return d.length; })])
-                       .range([0, plotWidth]);
-
-        var yScale = d3.scaleBand()
-                       .domain(d3.range(contigs.length))
-                       .rangeRound([0, plotHeight])
-                       .paddingInner(0.05);
-
-        var svg = d3.select("#contig_length_plot")
-                    .append("svg")
-                    .attr("width", plotWidth)
-                    .attr("height", plotHeight);
-
-        svg.selectAll("rect")
-            .data(contigs, function(d) { return d.name })
-            .enter()
-            .append("rect")
-            .attr("x", 0)
-            .attr("y", function(d, i) { return yScale(i); })
-            .attr("height", yScale.bandwidth())
-            .attr("width", function(d) { return xScale(d.length); })
-            .attr("fill", "blue");
-      </script>
     </div>
 
     <div id="threads_plot">
       <h2 id="page_title">Contig Threads</h2>
-      <script>
-        var plotWidth = 1500;
-        var plotHeight = 300;
-
-        var dropdown = d3.select('#threads_plot')
-          .append('select')
-          .attr('class','select')
-          .on('change',onchange);
-
-        var options = dropdown
-          .selectAll('option')
-          .data(Object.keys(threads))
-          .enter()
-          .append('option')
-          .text(function (d) { return d; });
-
-        var contig_threads = threads[d3.select('select').property('value')];
-
-        var xScale = d3.scaleLinear()
-                       .domain([d3.min(contig_threads, function(d) { return d[1]; }),
-                                d3.max(contig_threads, function(d) { return d[5]; }) ])
-                       .range([0, plotWidth]);
-        
-        var yScale = d3.scaleLinear()
-                               .domain([0, 100000])
-                               .range([0, plotHeight]);
-
-        function onchange() {
-          selectValue = d3.select('select').property('value')
-          d3.select('#threads_plot')
-            .append('p')
-            .text(selectValue + ' is the last selected option.')
-        };
-
-        var svg = d3.select("#threads_plot")
-                    .append("svg")
-                    .attr("width", plotWidth)
-                    .attr("height", plotHeight);
-
-        var alignments = svg.selectAll("line")
-            .data(contig_threads)
-            .enter()
-
-        var mq_opacity = function(mq) { return mq/60 }
-        
-        alignments.append("line")
-            .attr("x1", function(d) { return xScale(d[2]); })
-            .attr("x2", function(d) { return xScale(d[3]); })
-            .attr("y1", function(d) { return yScale(40000); })
-            .attr("y2", function(d) { return yScale(60000); })
-            .style("stroke-opacity", function(d) { return mq_opacity(d[6]) })
-            .style("stroke", "blue")
-
-        alignments.append("line")
-            .attr("x1", function(d) { return xScale(d[1]); })
-            .attr("x2", function(d) { return xScale(d[2]); })
-            .attr("y1", function(d) { return yScale(40000-d[0]); })
-            .attr("y2", function(d) { return yScale(40000); })
-            .style("stroke-opacity", function(d) { return mq_opacity(d[6]) })
-            .style("stroke", "orange")
-
-        alignments.append("line")
-            .attr("x1", function(d) { return xScale(d[3]); })
-            .attr("x2", function(d) { return xScale(d[5]); })
-            .attr("y1", function(d) { return yScale(60000); })
-            .attr("y2", function(d) { return yScale(60000+d[4]); })
-            .style("stroke-opacity", function(d) { return mq_opacity(d[6]) })
-            .style("stroke", "pink")
-      </script>
     </div>
 
     <div id="contig_report">
@@ -155,14 +50,114 @@
           </tr>
         </thead>
       </table>
-
-      <script>
-        var $table = $('#table')
-        $(function() {
-          $table.bootstrapTable({data: contigs})
-        })
-      </script>
     </div>
   </div>
+<script type="text/javascript">
+{{ include_file('static/jquery-3.3.1.min.js') }}
+{{ include_file('static/bootstrap.min.js') }}
+{{ include_file('static/bootstrap-table.min.js') }}
+{{ include_file('static/d3.min.js') }}
+    
+var contigs = {{ contigs }};
+var threads = {{ threads }};
+
+var $table = $('#table')
+$(function() {
+  $table.bootstrapTable({data: contigs})
+})
+
+var mq_opacity = function(mq) { return mq/60 }
+
+var plot_threads = function (contig_threads, threads_svg, threads_xScale, threads_yScale) {
+
+    threads_xScale.domain([d3.min(contig_threads, function(d) { return d[1]; }),
+                           d3.max(contig_threads, function(d) { return d[5]; }) ])
+    
+    threads_svg.selectAll("line.thread").remove()
+    
+    var alignments = threads_svg.selectAll("line.thread")
+        .data(contig_threads)
+        .enter()
+    
+    alignments.append("line")
+        .attr("class", "thread")
+        .attr("x1", function(d) { return threads_xScale(d[2]); })
+        .attr("x2", function(d) { return threads_xScale(d[3]); })
+        .attr("y1", function(d) { return threads_yScale(40000); })
+        .attr("y2", function(d) { return threads_yScale(60000); })
+        .style("stroke-opacity", function(d) { return mq_opacity(d[6]) })
+        .style("stroke", "blue")
+    
+    alignments.append("line")
+        .attr("class", "thread")
+        .attr("x1", function(d) { return threads_xScale(d[1]); })
+        .attr("x2", function(d) { return threads_xScale(d[2]); })
+        .attr("y1", function(d) { return threads_yScale(40000-d[0]); })
+        .attr("y2", function(d) { return threads_yScale(40000); })
+        .style("stroke-opacity", function(d) { return mq_opacity(d[6]) })
+        .style("stroke", "orange")
+
+    alignments.append("line")
+          .attr("class", "thread")
+          .attr("x1", function(d) { return threads_xScale(d[3]); })
+          .attr("x2", function(d) { return threads_xScale(d[5]); })
+          .attr("y1", function(d) { return threads_yScale(60000); })
+          .attr("y2", function(d) { return threads_yScale(60000+d[4]); })
+          .style("stroke-opacity", function(d) { return mq_opacity(d[6]) })
+          .style("stroke", "pink")
+}
+
+var margin = {top: 20, right: 20, bottom: 50, left: 70},
+  contigs_plotWidth = 1000 - margin.left - margin.right,
+  contigs_plotHeight = 600 - margin.top - margin.bottom;
+
+var contigs_xScale = d3.scaleLinear()
+               .domain([0, d3.max(contigs, function(d) { return d.length; })])
+               .range([0, contigs_plotWidth]);
+
+var contigs_yScale = d3.scaleBand()
+               .domain(contigs.map(d => d.name))
+               .rangeRound([0, contigs_plotHeight])
+               .paddingInner(0.05);
+
+var yAxis  = d3.axisLeft(contigs_yScale);
+
+var contigs_svg = d3.select("#contig_length_plot")
+            .append("svg")
+            .attr("width", contigs_plotWidth + margin.left + margin.right)
+            .attr("height", contigs_plotHeight + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", "translate(" + margin.left + "," + margin.top + ")")
+            .call(yAxis);
+
+var threads_plotWidth = 1500;
+var threads_plotHeight = 300;
+
+var threads_svg = d3.select("#threads_plot")
+            .append("svg")
+            .attr("width", threads_plotWidth)
+            .attr("height", threads_plotHeight);
+
+var threads_xScale = d3.scaleLinear()
+                       .range([0, threads_plotWidth]);
+
+var threads_yScale = d3.scaleLinear()
+                       .domain([0, 100000])
+                       .range([0, threads_plotHeight]);
+
+plot_threads(threads[contigs.map(d => d.longname)[0]], threads_svg, threads_xScale, threads_yScale)
+
+contigs_svg.selectAll("rect")
+    .data(contigs, function(d) { return d.name })
+    .enter()
+    .append("rect")
+    .attr("x", 0)
+    .attr("y", function(d) { return contigs_yScale(d.name); })
+    .attr("height", contigs_yScale.bandwidth())
+    .attr("width", function(d) { return contigs_xScale(d.length); })
+    .attr("fill", "blue")
+    .attr("contig", function(d) { return d.longname })
+    .on("click", function() {plot_threads(threads[d3.select(this).attr("contig")], threads_svg, threads_xScale, threads_yScale)})
+</script>
 </body>
 </html>
