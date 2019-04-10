@@ -57,7 +57,7 @@
 {{ include_file('static/bootstrap.min.js') }}
 {{ include_file('static/bootstrap-table.min.js') }}
 {{ include_file('static/d3.min.js') }}
-    
+
 var contigs = {{ contigs }};
 var threads = {{ threads }};
 
@@ -68,9 +68,9 @@ $(function() {
 
 var mq_opacity = function(mq) { return mq/60 }
 
-var plot_threads = function (contig_threads, threads_svg, threads_xScale, threads_yScale) {
+var plot_threads = function (contig_threads, threads_svg, threads_dim) {
 
-    threads_xScale.domain([d3.min(contig_threads, function(d) { return d[1]; }),
+    threads_dim.xscale.domain([d3.min(contig_threads, function(d) { return d[1]; }),
                            d3.max(contig_threads, function(d) { return d[5]; }) ])
     
     threads_svg.selectAll("line.thread").remove()
@@ -81,83 +81,137 @@ var plot_threads = function (contig_threads, threads_svg, threads_xScale, thread
     
     alignments.append("line")
         .attr("class", "thread")
-        .attr("x1", function(d) { return threads_xScale(d[2]); })
-        .attr("x2", function(d) { return threads_xScale(d[3]); })
-        .attr("y1", function(d) { return threads_yScale(40000); })
-        .attr("y2", function(d) { return threads_yScale(60000); })
+        .attr("x1", function(d) { return threads_dim.xscale(d[2]); })
+        .attr("x2", function(d) { return threads_dim.xscale(d[3]); })
+        .attr("y1", function(d) { return threads_dim.yscale(40000); })
+        .attr("y2", function(d) { return threads_dim.yscale(60000); })
         .style("stroke-opacity", function(d) { return mq_opacity(d[6]) })
         .style("stroke", "blue")
     
     alignments.append("line")
         .attr("class", "thread")
-        .attr("x1", function(d) { return threads_xScale(d[1]); })
-        .attr("x2", function(d) { return threads_xScale(d[2]); })
-        .attr("y1", function(d) { return threads_yScale(40000-d[0]); })
-        .attr("y2", function(d) { return threads_yScale(40000); })
+        .attr("x1", function(d) { return threads_dim.xscale(d[1]); })
+        .attr("x2", function(d) { return threads_dim.xscale(d[2]); })
+        .attr("y1", function(d) { return threads_dim.yscale(40000-d[0]); })
+        .attr("y2", function(d) { return threads_dim.yscale(40000); })
         .style("stroke-opacity", function(d) { return mq_opacity(d[6]) })
         .style("stroke", "orange")
 
     alignments.append("line")
           .attr("class", "thread")
-          .attr("x1", function(d) { return threads_xScale(d[3]); })
-          .attr("x2", function(d) { return threads_xScale(d[5]); })
-          .attr("y1", function(d) { return threads_yScale(60000); })
-          .attr("y2", function(d) { return threads_yScale(60000+d[4]); })
+          .attr("x1", function(d) { return threads_dim.xscale(d[3]); })
+          .attr("x2", function(d) { return threads_dim.xscale(d[5]); })
+          .attr("y1", function(d) { return threads_dim.yscale(60000); })
+          .attr("y2", function(d) { return threads_dim.yscale(60000+d[4]); })
           .style("stroke-opacity", function(d) { return mq_opacity(d[6]) })
           .style("stroke", "pink")
 }
 
-var margin = {top: 20, right: 20, bottom: 50, left: 70},
-  contigs_plotWidth = 1000 - margin.left - margin.right,
-  contigs_plotHeight = 600 - margin.top - margin.bottom;
+var select_contig = function(selected_contig, contigs_svg, contigs_dim) {
+    var selected = contigs_svg.selectAll("circle.selected")
+                    .data(contigs.filter(c => c.longname == selected_contig), function(d) { return d.longname })
+    selected.enter()
+        .append("circle")
+        .attr("class", "selected")
+        .attr("cx", contigs_dim.width + contigs_dim.margin.right/2)
+        .attr("cy", function(d) { return contigs_dim.yscale(d.name) + contigs_dim.yscale.bandwidth()/2; })
+        .attr("r", contigs_dim.yscale.bandwidth())
+        .attr("fill", "green")
 
-var contigs_xScale = d3.scaleLinear()
-               .domain([0, d3.max(contigs, function(d) { return d.length; })])
-               .range([0, contigs_plotWidth]);
+    selected.exit()
+        .remove()
+}
 
-var contigs_yScale = d3.scaleBand()
-               .domain(contigs.map(d => d.name))
-               .rangeRound([0, contigs_plotHeight])
-               .paddingInner(0.05);
+var contigs_dim = {
+    margin: {top: 20, right: 20, bottom: 50, left: 80},
+    height: contigs.length * 30
+}
 
-var yAxis  = d3.axisLeft(contigs_yScale);
+contigs_dim.width = 1000 - contigs_dim.margin.left - contigs_dim.margin.right
+
+var threads_dim = {
+    margin: {top: 20, right: 20, bottom: 50, left: 80},
+    width: 1500,
+    height: 300
+}
+
+
+contigs_dim.xscale = d3.scaleLinear()
+                       .domain([0, d3.max(contigs, function(d) { return d.length; })])
+                       .range([0, contigs_dim.width]);
+
+contigs_dim.yscale = d3.scaleBand()
+                       .domain(contigs.map(d => d.name))
+                       .rangeRound([0, contigs_dim.height])
+                       .padding(0.8);
+
+threads_dim.xscale = d3.scaleLinear()
+                       .range([0, threads_dim.width]);
+
+threads_dim.yscale = d3.scaleLinear()
+                       .domain([0, 100000])
+                       .range([0, threads_dim.height]);
+
 
 var contigs_svg = d3.select("#contig_length_plot")
             .append("svg")
-            .attr("width", contigs_plotWidth + margin.left + margin.right)
-            .attr("height", contigs_plotHeight + margin.top + margin.bottom)
+            .attr("width", contigs_dim.width + contigs_dim.margin.left + contigs_dim.margin.right)
+            .attr("height", contigs_dim.height + contigs_dim.margin.top + contigs_dim.margin.bottom)
             .append("g")
-            .attr("transform", "translate(" + margin.left + "," + margin.top + ")")
-            .call(yAxis);
-
-var threads_plotWidth = 1500;
-var threads_plotHeight = 300;
+            .attr("transform", "translate(" + contigs_dim.margin.left + "," + (contigs_dim.margin.top + contigs_dim.height) + ")")
+            .call(d3.axisBottom(contigs_dim.xscale))
+            .attr("class", "xAxis")
+            .append("g")
+            .attr("transform", "translate(0,-" + contigs_dim.height + ")")
+            .call(d3.axisLeft(contigs_dim.yscale))
+            .attr("class", "yAxis");
 
 var threads_svg = d3.select("#threads_plot")
             .append("svg")
-            .attr("width", threads_plotWidth)
-            .attr("height", threads_plotHeight);
+            .attr("width", threads_dim.width)
+            .attr("height", threads_dim.height);
 
-var threads_xScale = d3.scaleLinear()
-                       .range([0, threads_plotWidth]);
+var selected_contig = contigs.map(d => d.longname)[0]
+plot_threads(threads[selected_contig], threads_svg, threads_dim)
 
-var threads_yScale = d3.scaleLinear()
-                       .domain([0, 100000])
-                       .range([0, threads_plotHeight]);
-
-plot_threads(threads[contigs.map(d => d.longname)[0]], threads_svg, threads_xScale, threads_yScale)
-
-contigs_svg.selectAll("rect")
+contigs_svg.selectAll("rect.contig")
     .data(contigs, function(d) { return d.name })
     .enter()
     .append("rect")
+    .attr("class", "contig")
+    .attr("y", function(d) { return contigs_dim.yscale(d.name); })
+    .attr("height", contigs_dim.yscale.bandwidth())
     .attr("x", 0)
-    .attr("y", function(d) { return contigs_yScale(d.name); })
-    .attr("height", contigs_yScale.bandwidth())
-    .attr("width", function(d) { return contigs_xScale(d.length); })
-    .attr("fill", "blue")
-    .attr("contig", function(d) { return d.longname })
-    .on("click", function() {plot_threads(threads[d3.select(this).attr("contig")], threads_svg, threads_xScale, threads_yScale)})
+    .attr("width", function(d) { return contigs_dim.xscale(d.length); })
+    .attr("fill", "grey")
+    .attr("name", function(d) { return d.longname })
+    .on("click", function() {
+        selected_contig = d3.select(this).attr("name")
+        plot_threads(threads[selected_contig], threads_svg, threads_dim)
+        select_contig(selected_contig, contigs_svg, contigs_dim)
+    })
+
+select_contig(selected_contig, contigs_svg, contigs_dim)
+
+contigs_svg.selectAll("circle.starttel")
+    .data(contigs.filter(c => c.tel_start > 0), function(d) { return d.name })
+    .enter()
+    .append("circle")
+    .attr("class", "starttel")
+    .attr("cx", 0)
+    .attr("cy", function(d) { return contigs_dim.yscale(d.name) + contigs_dim.yscale.bandwidth()/2; })
+    .attr("r", contigs_dim.yscale.bandwidth())
+    .attr("fill", "red")
+
+contigs_svg.selectAll("circle.endtel")
+    .data(contigs.filter(c => c.tel_end > 0), function(d) { return d.name })
+    .enter()
+    .append("circle")
+    .attr("class", "endtel")
+     .attr("cx", function(d) { return contigs_dim.xscale(d.length) })
+    .attr("cy", function(d) { return contigs_dim.yscale(d.name) + contigs_dim.yscale.bandwidth()/2; })
+    .attr("r", contigs_dim.yscale.bandwidth())
+    .attr("fill", "red")
 </script>
 </body>
 </html>
