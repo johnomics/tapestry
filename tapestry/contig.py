@@ -24,6 +24,7 @@ def process_contig(contig):
 
 def get_ploidy(contig, median_depth=None):
     contig.ploidys = contig.get_ploidys(median_depth)
+    contig.ploidy_pc = contig.get_ploidy_pc()
     return contig
 
 
@@ -54,7 +55,7 @@ class Contig:
         report += f"\t{self.unique_bases}"
         report += f"\t{self.unique_pc:.0f}"
         report += f"\t{self.category(assembly_gc)}"
-        report += "\t" + ','.join([f"{p}:{self.ploidys[p]:.2f}" for p in sorted(self.ploidys)])
+        report += "\t" + ','.join([f"{p}:{self.ploidy_pc[p]:.2f}" for p in sorted(self.ploidy_pc)])
         report += "\t" + ','.join(self.left_connectors) if self.left_connectors else '\tNone'
         report += "\t" + ','.join(self.right_connectors) if self.right_connectors else '\tNone'
     
@@ -131,7 +132,7 @@ class Contig:
 
         category += self.completeness()
         
-        max_ploidy = sorted(self.ploidys, key=lambda x:self.ploidys[x], reverse=True)[0] if self.ploidys else 0
+        max_ploidy = sorted(self.ploidy_pc, key=lambda x:self.ploidy_pc[x], reverse=True)[0] if self.ploidy_pc else 0
         if max_ploidy > 4:
             max_ploidy = 'R'
         category += f"{max_ploidy}"
@@ -224,36 +225,31 @@ class Contig:
         return self.unique_bases/len(self) * 100
 
 
-    def assign_ploidy(self, mean, depth):
-        ploidy = 0
-        prev_diff = None
-        while True:
-            mean_diff = abs(depth*ploidy - mean)
-            if prev_diff is not None and mean_diff > prev_diff:
-                ploidy -= 1 # Previous ploidy was a better fit
-                break
-            prev_diff = mean_diff
-            ploidy += 1
-        return ploidy
+    def get_ploidys(self, median_depth, components=5):
 
-
-    def get_ploidys(self, median_depth, components=10):
-
-        ploidys = defaultdict(float)
         if len(self.read_depths) < components: # Can't fit model with fewer windows than components
             return ploidys
 
         model = mixture.BayesianGaussianMixture(n_components=components, max_iter=1000)
+
         depths = np.array(self.read_depths['depth']).reshape(-1,1)
+
         warnings.filterwarnings("ignore", category=ConvergenceWarning)
-        model.fit(depths)
+        labels = model.fit_predict(depths)
         warnings.resetwarnings()
 
-        for i in range(0,len(model.means_)):
-            ploidy = self.assign_ploidy(model.means_[i], median_depth/2)
-            ploidys[ploidy] += model.weights_[i]
+        haploid_depth = median_depth / 2
+        ploidys = [int(round((float(model.means_[l]) / haploid_depth))) for l in labels]
 
         return ploidys
+
+
+    def get_ploidy_pc(self):
+        ploidy_pc = defaultdict(float)
+        for p in self.ploidys:
+            ploidy_pc[p] += 1/len(self.ploidys)
+
+        return ploidy_pc
 
 
     def get_aln_length(self, cigar):
@@ -327,26 +323,31 @@ class Contig:
         return left_connectors, right_connectors
 
 
-    def get_clip_pos(self, length, angle=150):
-        height = abs(length * sin(angle))
-        width  = length * cos(angle)
-        return height, width
-
-
-    def plot_threads(self, angle=150):
+    def plot_threads(self):
         threads = []
-        for i, row in self.alignments.threads(self.name).iterrows():
-            start_clip_height, start_clip_width = self.get_clip_pos(row.left_clip, angle)
-            end_clip_height, end_clip_width     = self.get_clip_pos(row.right_clip, angle)
+        plot_row_ends = []
+        for i, thread in self.alignments.threads(self.name).iterrows():
+            start_position = thread.ref_start - thread.left_clip
+            end_position = thread.ref_end + thread.right_clip
+
+            assigned_row = None
+            for r, row in enumerate(plot_row_ends):
+                if row + 1000 < start_position:
+                    assigned_row = r
+                    plot_row_ends[r] = end_position
+                    break
+            if assigned_row is None:
+                assigned_row = len(plot_row_ends)
+                plot_row_ends.append(end_position)
 
             # int conversion required because Pandas uses numpy int64, which json doesn't understand
             threads.append([int(x) for x in
-                                [start_clip_height,                # clip start y pos
-                                 row.ref_start - start_clip_width, # clip start x pos
-                                 row.ref_start,                    # contig alignment start
-                                 row.ref_end,                      # contig alignment end
-                                 end_clip_height,                  # clip end y pos
-                                 row.ref_end + end_clip_width,     # clip end
-                                 row.mq                            # mapping quality
+                                [start_position,    # read start including left clip
+                                 thread.ref_start,  # contig alignment start
+                                 thread.ref_end,    # contig alignment end
+                                 end_position,      # read end including right clip
+                                 thread.mq,         # mapping quality
+                                 assigned_row       # y position on plot
                            ]])
+
         return threads

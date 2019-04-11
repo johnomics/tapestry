@@ -275,6 +275,9 @@ class Alignments():
                 func.count(self.alignments.c.query).label('depth')
              ])
               .select_from(self.ranges.join(self.alignments, self.ranges.c.contig == self.alignments.c.contig))
+              .where(and_(self.alignments.c.alntype.in_(["primary", "supplementary"]),
+                         self.alignments.c.mq == 60)
+                    )
              )
 
         rdf = self.alignments_in_region(rd, contig_name, query_type, self.ranges.c.start, self.ranges.c.end)
@@ -349,17 +352,20 @@ class Alignments():
 
     def threads(self, contig):
         stmt = (select([
-            self.alignments.c.ref_start,
-            self.alignments.c.ref_end,
-            self.alignments.c.left_clip,
-            self.alignments.c.right_clip,
-            self.alignments.c.mq
-        ])
-        .select_from(self.reads.join(self.alignments, self.reads.c.name == self.alignments.c.query))
-        .where(and_(
+                self.alignments.c.ref_start,
+                self.alignments.c.ref_end,
+                self.alignments.c.left_clip,
+                self.alignments.c.right_clip,
+                self.alignments.c.mq,
+                (self.alignments.c.ref_start - self.alignments.c.left_clip).label('start_position'),
+                (self.alignments.c.ref_end + self.alignments.c.right_clip).label('end_position')
+            ])
+            .select_from(self.reads.join(self.alignments, self.reads.c.name == self.alignments.c.query))
+            .where(and_(
                 self.alignments.c.contig == contig,
                 self.alignments.c.alntype != "secondary"
-              ))
+            ))
+            .order_by("start_position")
         )
 
         with self.engine.connect() as conn:
