@@ -34,6 +34,8 @@
     <div id="threads_plot">
       <h2 id="page_title">Contig Threads</h2>
     </div>
+    <div id="contig_depth_plot">
+    </div>
 
     <div id="contig_report">
       <h2>Contig Report</h2>
@@ -62,6 +64,19 @@ var contigs = {{ contigs }};
 var threads = {{ threads }};
 var contig_depths = {{ contig_depths }};
 
+var max_thread_depth = 0;
+var contig_domains = {};
+
+for (var key in threads) {
+    var max_contig_thread_depth = d3.max(threads[key], function(d) {return d[5]});
+    if (max_thread_depth < max_contig_thread_depth) {
+        max_thread_depth = max_contig_thread_depth
+    }
+    
+    contig_domains[key] = [d3.min(threads[key], function(d) {return d[0]; }),
+                           d3.max(threads[key], function(d) {return d[3]; }) ]
+}
+
 var $table = $('#table')
 $(function() {
   $table.bootstrapTable({data: contigs})
@@ -69,7 +84,33 @@ $(function() {
 
 var mq_opacity = function(mq) { return mq/60 }
 
-var plot_threads = function (contig_threads, threads_svg, threads_dim) {
+var plot_contig_depths = function(contig_depths, contig_depths_svg, contig_depths_dim, domain) {
+
+    // contig_depths:
+    // 0 begin
+    // 1 end
+    // 2 depth
+
+    contig_depths_dim.xscale.domain(domain)
+    
+    contig_depths_svg.selectAll("rect.contig_depth").remove()
+    
+    var cd = contig_depths_svg.selectAll("rect.contig_depth")
+        .data(contig_depths)
+        .enter()
+    
+    cd.append("rect")
+        .attr("class", "contig_depth")
+        .attr("x", function(d) { return contig_depths_dim.xscale(d[0])})
+        .attr("width", function(d) { return contig_depths_dim.xscale(d[1])-contig_depths_dim.xscale(d[0]); })
+        .attr("y", 0)
+        .attr("height", function(d) { return contig_depths_dim.yscale(d[2]); })
+        .attr("fill", "grey")
+        .attr("stroke-opacity", 0)
+        .attr("fill", function(d) { return contig_depths_dim.colscale(d[2]); })
+}
+
+var plot_threads = function (contig_threads, threads_svg, threads_dim, domain) {
 
     // contig_threads:
     //  0 read start including left clip
@@ -79,10 +120,9 @@ var plot_threads = function (contig_threads, threads_svg, threads_dim) {
     //  4 mapping quality
     //  5 y position on plot
 
-    threads_dim.xscale.domain([d3.min(contig_threads, function(d) { return d[0]; }),
-                           d3.max(contig_threads, function(d) { return d[3]; }) ])
+    threads_dim.xscale.domain(domain)
     
-    threads_dim.yscale.domain([0, d3.max(contig_threads, function(d) {return d[5]; })])
+//    threads_dim.yscale.domain([0, d3.max(contig_threads, function(d) {return d[5]; })])
     
     threads_svg.selectAll("line.thread").remove()
     
@@ -140,12 +180,20 @@ var contigs_dim = {
 
 contigs_dim.width = 1000 - contigs_dim.margin.left - contigs_dim.margin.right
 
+
 var threads_dim = {
-    margin: {top: 20, right: 20, bottom: 50, left: 80},
-    width: 1500,
-    height: 300
+    margin: {top: 20, right: 20, bottom: 0, left: 80},
+    height: 400
 }
 
+var contig_depths_dim = {
+    margin: {top: 0, right: 20, bottom: 50, left: 80},
+    height: 100
+}
+
+single_contig_width = 1500
+threads_dim.width = single_contig_width - threads_dim.margin.left - threads_dim.margin.right
+contig_depths_dim.width = single_contig_width - contig_depths_dim.margin.left - contig_depths_dim.margin.right
 
 contigs_dim.xscale = d3.scaleLinear()
                        .domain([0, d3.max(contigs, function(d) { return d.length; })])
@@ -160,9 +208,18 @@ threads_dim.xscale = d3.scaleLinear()
                        .range([0, threads_dim.width]);
 
 threads_dim.yscale = d3.scaleLinear()
-                       .domain([0, 100000])
-                       .range([0, threads_dim.height]);
+                       .domain([0, max_thread_depth])
+                       .range([threads_dim.height, 0]);
 
+contig_depths_dim.xscale = d3.scaleLinear()
+                             .range([0, contig_depths_dim.width]);
+
+contig_depths_dim.yscale = d3.scaleLinear()
+                             .domain([0, 4])
+                             .range([0, contig_depths_dim.height]);
+
+contig_depths_dim.colscale = d3.scaleOrdinal(d3.interpolateWarm)
+                                .domain([0, 100])
 
 var contigs_svg = d3.select("#contig_length_plot")
             .append("svg")
@@ -182,8 +239,14 @@ var threads_svg = d3.select("#threads_plot")
             .attr("width", threads_dim.width)
             .attr("height", threads_dim.height);
 
+var contig_depths_svg = d3.select("#contig_depth_plot")
+            .append("svg")
+            .attr("width", contig_depths_dim.width)
+            .attr("height", contig_depths_dim.height)
+
 var selected_contig = contigs.map(d => d.longname)[0]
-plot_threads(threads[selected_contig], threads_svg, threads_dim)
+plot_threads(threads[selected_contig], threads_svg, threads_dim, contig_domains[selected_contig])
+plot_contig_depths(contig_depths[selected_contig], contig_depths_svg, contig_depths_dim, contig_domains[selected_contig])
 
 contigs_svg.selectAll("rect.contig")
     .data(contigs, function(d) { return d.name })
@@ -198,7 +261,8 @@ contigs_svg.selectAll("rect.contig")
     .attr("name", function(d) { return d.longname })
     .on("click", function() {
         selected_contig = d3.select(this).attr("name")
-        plot_threads(threads[selected_contig], threads_svg, threads_dim)
+        plot_threads(threads[selected_contig], threads_svg, threads_dim, contig_domains[selected_contig])
+        plot_contig_depths(contig_depths[selected_contig], contig_depths_svg, contig_depths_dim, contig_domains[selected_contig])
         select_contig(selected_contig, contigs_svg, contigs_dim)
     })
 

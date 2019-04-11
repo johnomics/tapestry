@@ -90,7 +90,7 @@ class Contig:
 
 
     def region_depths_json(self):
-        return [(r.begin, r.end, r.end-r.begin, r.data) for r in self.region_depths]
+        return [(r.begin, r.end, r.data) for r in self.region_depths]
 
     def process(self):
         # Alignments added here for multithreading
