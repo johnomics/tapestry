@@ -265,7 +265,8 @@ class Assembly(AssemblyPlot):
         with open(f"{self.outdir}/tapestry_report.html", 'wt') as html_report:
             print(template.render(
                     contigs=json.dumps([self.contigs[c].json() for c in self.contigs]),
-                    threads=json.dumps({c:self.contigs[c].threads for c in self.contigs})
+                    threads=json.dumps({c:self.contigs[c].threads for c in self.contigs}),
+                    contig_depths = json.dumps({c:self.contigs[c].region_depths_json() for c in self.contigs})
                  ),
                  file=html_report)
 

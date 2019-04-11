@@ -89,6 +89,9 @@ class Contig:
         return regions.rstrip()
 
 
+    def region_depths_json(self):
+        return [(r.begin, r.end, r.end-r.begin, r.data) for r in self.region_depths]
+
     def process(self):
         # Alignments added here for multithreading
         self.alignments = Alignments(self.filenames['alignments'])
