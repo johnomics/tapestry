@@ -30,10 +30,11 @@ def get_ploidy(contig, median_depth=None):
 
 class Contig:
 
-    def __init__(self, rec, telomeres, outdir, filenames):
+    def __init__(self, rec, telomeres, windowsize, outdir, filenames):
         self.name = rec.id
         self.rec = rec
         self.telomeres = telomeres
+        self.windowsize = windowsize
         self.outdir = outdir
         self.filenames = filenames
 
@@ -201,8 +202,8 @@ class Contig:
     def get_contig_alignments(self):
         alignments = IntervalTree()
         alignments[1:len(self)] = 1
-        for start, end in self.alignments.get_contig_alignments(self.name):
-            alignments[start:end+1] = 1
+        for start, end, contig in self.alignments.get_contig_alignments(self.name):
+            alignments[start:end+1] = contig
         return alignments
 
 
@@ -230,9 +231,10 @@ class Contig:
 
     def get_ploidys(self, median_depth, components=5):
 
+        empty_ploidys = [0] * len(self.read_depths)
         # Can't fit model with fewer windows than components
         if len(self.read_depths) < components: 
-            return [0] * len(self.read_depths)
+            return empty_ploidys
 
         model = mixture.BayesianGaussianMixture(n_components=components, max_iter=1000)
 
@@ -243,6 +245,9 @@ class Contig:
         warnings.resetwarnings()
 
         haploid_depth = median_depth / 2
+        if haploid_depth == 0:
+            return empty_ploidys
+
         ploidys = [int(round((float(model.means_[l]) / haploid_depth))) for l in labels]
 
         return ploidys
@@ -330,6 +335,9 @@ class Contig:
     def plot_threads(self):
         threads = []
         plot_row_ends = []
+        if self.alignments.threads(self.name) is None:
+            return threads
+
         for i, thread in self.alignments.threads(self.name).iterrows():
             start_position = thread.ref_start - thread.left_clip
             end_position = thread.ref_end + thread.right_clip

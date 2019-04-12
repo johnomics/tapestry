@@ -20,9 +20,25 @@ class Alignments():
         self.reads, self.contigs, self.ranges, self.alignments = self.tables()
 
 
-    def load(self, reads_bam, contigs_bam, reference):
+    def windowsize_matches(self):
+        ws_matches = select([func.count(self.ranges.c.width)]).where(self.ranges.c.width == self.windowsize)
+        ws_all =     select([func.count(self.ranges.c.width)])
+        
+        with self.engine.connect() as conn:
+            matches = conn.execute(ws_matches).fetchall()
+            windows = conn.execute(ws_all).fetchall()
+        
+        # Hack; 50% of windows in the database are the same size as the window size option.
+        # The only windows that aren't this size are at the end of the contig, so can't do equality check,
+        # but should be much more than 50% matching. However, 50% should be sufficient
+        return matches[0][0] > (windows[0][0] * 0.5)
+
+
+    def load(self, reads_bam, contigs_bam, reference, windowsize):
+        self.windowsize = windowsize
+
         db_exists = file_exists(self.db_filename, deps=[reads_bam, contigs_bam])
-        if db_exists:
+        if db_exists and self.windowsize_matches():
             log.info(f"Will use existing {self.db_filename}")
         else:
             log.info(f"Building alignments database {self.db_filename}")
@@ -80,13 +96,12 @@ class Alignments():
                     contig_length = len(reference[contig])
                     contig_rows.append({'name'  : reference[contig].name,
                                         'length': contig_length})
-            
-                    window_size = 2000
-                    for start in range(1, contig_length, int(window_size/2)):
-                        end = min(start + window_size - 1, contig_length)
+
+                    for start in range(1, contig_length, int(self.windowsize/2)):
+                        end = min(start + self.windowsize - 1, contig_length)
             
                         ranges_rows.append({'contig' : reference[contig].name,
-                                           'width'  : window_size,
+                                           'width'  : end - start + 1,
                                            'start'  : start,
                                            'end'    : end})
                         if end == contig_length: # Skip remaining windows if last window already reaches end of contig
@@ -202,7 +217,8 @@ class Alignments():
     def get_contig_alignments(self, contig_name):
         stmt = (select([
                     self.alignments.c.ref_start,
-                    self.alignments.c.ref_end 
+                    self.alignments.c.ref_end,
+                    self.alignments.c.query
                 ])
                 .where(and_(
                     self.alignments.c.querytype == 'contig',

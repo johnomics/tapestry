@@ -6,6 +6,7 @@ from multiprocessing import Pool
 from functools import partial
 from statistics import mean, median
 from gzip import open as gzopen
+from tqdm import tqdm
 
 from Bio import SeqIO, motifs
 from Bio.Seq import Seq
@@ -34,7 +35,7 @@ filenames = {
 
 class Assembly(AssemblyPlot):
 
-    def __init__(self, assemblyfile, readfile, telomeres, outdir, cores, depth, minreadlength):
+    def __init__(self, assemblyfile, readfile, telomeres, outdir, cores, depth, minreadlength, windowsize):
         self.assemblyfile = assemblyfile
         self.readfile = readfile
         self.telomeres = [motifs.create([Seq(t[0])]) for t in telomeres] if telomeres else None
@@ -42,6 +43,7 @@ class Assembly(AssemblyPlot):
         self.cores = cores
         self.depth = depth
         self.minreadlength = minreadlength
+        self.windowsize = windowsize
 
         setup_output(self.outdir)
         self.filenames = {file_key:f"{self.outdir}/{filenames[file_key]}" for file_key in filenames}
@@ -108,7 +110,7 @@ class Assembly(AssemblyPlot):
             for rec in SeqIO.parse(open(self.assemblyfile, 'r'), "fasta"):
                 rec.seq = rec.seq.upper()
                 rec.id = f"{self.outdir}_{rec.id}"
-                contigs[rec.id] = Contig(rec, self.telomeres, self.outdir, self.filenames)
+                contigs[rec.id] = Contig(rec, self.telomeres, self.windowsize, self.outdir, self.filenames)
                 if no_assembly_found:
                     SeqIO.write(rec, assembly_out, "fasta")
         except IOError:
@@ -127,24 +129,35 @@ class Assembly(AssemblyPlot):
                 log.info(f"Using all reads as depth option is {self.depth}")
             else:
                 log.info(f"Sampling {self.depth} times coverage of {len(self)/1000000:.1f} Mb assembly from >{self.minreadlength}bp reads in {self.readfile}")
-                bases = len(self) * self.depth
-                with gzopen(self.readfile, 'rt') as all_reads, gzopen(self.filenames['sampled_reads'], "wt") as sampled_reads:
-                    sampled_bases = 0
-                    read_count = 0
+
+                with gzopen(self.readfile, 'rt') as all_reads, gzopen(self.filenames['sampled_reads'], 'wt', compresslevel=6) as sampled_reads, tqdm(total=self.depth) as pbar:
+                    sampled_bases = read_count = times_coverage = 0
                     readset = []
-                    for read in SeqIO.parse(all_reads, "fastq"):
-                        if len(read.seq) < self.minreadlength:
+
+                    for title, sequence, quality in FastqGeneralIterator(all_reads):
+
+                        if len(sequence) < self.minreadlength:
                             continue
-                        readset.append(read)
+
+                        readset.append(f"@{title}\n{sequence}\n+\n{quality}")
+
                         read_count += 1
-                        if read_count % 10000 == 0:
-                            SeqIO.write(readset, sampled_reads, "fastq")
+                        sampled_bases += len(sequence)
+                        new_times_coverage = round(sampled_bases / len(self))
+
+                        if new_times_coverage > times_coverage:
+                            print('\n'.join(readset), file=sampled_reads)
                             readset = []
-                        sampled_bases += len(read.seq)
-                        if sampled_bases > bases:
+                            pbar.update()
+                            times_coverage = new_times_coverage
+
+                        if times_coverage == self.depth:
                             break
-                    SeqIO.write(readset, sampled_reads, "fastq")
-                log.info(f"Wrote {read_count} reads ({sampled_bases} bases) to {self.filenames['sampled_reads']}")
+                    print(readset, file=sampled_reads, end='')
+
+                log.info(f"Wrote {read_count} reads ({sampled_bases} bases, {times_coverage} times coverage) to {self.filenames['sampled_reads']}")
+                if times_coverage < self.depth:
+                    log.warning(f"Only found {times_coverage} times coverage in reads longer than {self.minreadlength}, not {self.depth} times; consider reducing minimum read length (-l)")
 
 
     def make_bam(self, aligntype):
@@ -196,7 +209,7 @@ class Assembly(AssemblyPlot):
 
     def load_alignments(self):
         alignments = Alignments(self.filenames['alignments'])
-        alignments.load(self.filenames['reads_bam'], self.filenames['contigs_bam'], self.contigs)
+        alignments.load(self.filenames['reads_bam'], self.filenames['contigs_bam'], self.contigs, self.windowsize)
         return alignments
 
 
@@ -264,6 +277,7 @@ class Assembly(AssemblyPlot):
         template = env.get_template('template.html')
         with open(f"{self.outdir}/tapestry_report.html", 'wt') as html_report:
             print(template.render(
+                    windowsize = self.windowsize,
                     contigs = json.dumps([self.contigs[c].json() for c in self.contigs]),
                     threads = json.dumps({c:self.contigs[c].threads for c in self.contigs}),
                     contig_depths = json.dumps({c:self.contigs[c].region_depths_json() for c in self.contigs}),

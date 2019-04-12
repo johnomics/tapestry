@@ -73,8 +73,9 @@ def get_weave_args(arglist=[]):
            ["'-a', '--assembly', help='filename of assembly in FASTA format', type=str",
             "'-r', '--reads', help='filename of reads in FASTQ format (can be gzipped)', type=str",
             "'-d', '--depth', help='read depth to subsample from FASTQ file', type=int, default=50",
-            "'-l', '--length', help='minimum read length to retain when subsampling', type=int, default=2000",
+            "'-l', '--length', help='minimum read length to retain when subsampling', type=int, default=10000",
             "'-t', '--telomere', help='telomere sequence to search for', type=str, action='append', nargs='+'",
+            "'-w', '--windowsize', help='window size for ploidy calculations', type=int, default=10000",
             "'-o', '--output', help='directory to write output, default weave_output', type=str, default='weave_output'"])
 
     if not args.assembly:
