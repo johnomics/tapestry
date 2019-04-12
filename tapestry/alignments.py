@@ -214,7 +214,7 @@ class Alignments():
         return cigar_length
 
 
-    def get_contig_alignments(self, contig_name):
+    def contig_alignments(self, contig_name):
         stmt = (select([
                     self.alignments.c.ref_start,
                     self.alignments.c.ref_end,
@@ -366,7 +366,7 @@ class Alignments():
 
         return overhangs
 
-    def threads(self, contig):
+    def read_alignments(self, contig):
         stmt = (select([
                 self.alignments.c.ref_start,
                 self.alignments.c.ref_end,

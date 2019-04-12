@@ -90,8 +90,24 @@ class Contig:
         return regions.rstrip()
 
 
-    def region_depths_json(self):
-        return [(r.begin, r.end, r.data) for r in self.region_depths]
+    def contig_alignments_json(self):
+        plot_row_ends = []
+        alignments = []
+
+        for a in sorted(self.contig_alignments, key=lambda a: a.begin):
+            assigned_row = None
+            for r, row in enumerate(plot_row_ends):
+                if row + 1000 < a.begin:
+                    assigned_row = r
+                    plot_row_ends[r] = a.end
+                    break
+            if assigned_row is None:
+                assigned_row = len(plot_row_ends)
+                plot_row_ends.append(a.end)
+
+            alignments.append((a.begin, a.end, assigned_row, a.data))
+
+        return alignments
 
     def process(self):
         # Alignments added here for multithreading
@@ -111,7 +127,7 @@ class Contig:
         self.tel_start, self.tel_end = self.num_telomeres()
         self.left_connectors, self.right_connectors = self.get_connectors()
         self.aligned_primary_pc, self.aligned_all_pc = self.get_read_alignment_stats()
-        self.threads = self.plot_threads()
+        self.read_alignments = self.plot_read_alignments()
 
         # Alignments work is done; they cannot be pickled, so clean up before return
         del(self.alignments)
@@ -202,7 +218,7 @@ class Contig:
     def get_contig_alignments(self):
         alignments = IntervalTree()
         alignments[1:len(self)] = 1
-        for start, end, contig in self.alignments.get_contig_alignments(self.name):
+        for start, end, contig in self.alignments.contig_alignments(self.name):
             alignments[start:end+1] = contig
         return alignments
 
@@ -332,15 +348,15 @@ class Contig:
         return left_connectors, right_connectors
 
 
-    def plot_threads(self):
-        threads = []
+    def plot_read_alignments(self):
+        read_alignments = []
         plot_row_ends = []
-        if self.alignments.threads(self.name) is None:
-            return threads
+        if self.alignments.read_alignments(self.name) is None:
+            return read_alignments
 
-        for i, thread in self.alignments.threads(self.name).iterrows():
-            start_position = thread.ref_start - thread.left_clip
-            end_position = thread.ref_end + thread.right_clip
+        for i, a in self.alignments.read_alignments(self.name).iterrows():
+            start_position = a.ref_start - a.left_clip
+            end_position = a.ref_end + a.right_clip
 
             assigned_row = None
             for r, row in enumerate(plot_row_ends):
@@ -353,13 +369,13 @@ class Contig:
                 plot_row_ends.append(end_position)
 
             # int conversion required because Pandas uses numpy int64, which json doesn't understand
-            threads.append([int(x) for x in
+            read_alignments.append([int(x) for x in
                                 [start_position,    # read start including left clip
-                                 thread.ref_start,  # contig alignment start
-                                 thread.ref_end,    # contig alignment end
+                                 a.ref_start,       # contig alignment start
+                                 a.ref_end,         # contig alignment end
                                  end_position,      # read end including right clip
-                                 thread.mq,         # mapping quality
+                                 a.mq,              # mapping quality
                                  assigned_row       # y position on plot
                            ]])
 
-        return threads
+        return read_alignments

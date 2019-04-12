@@ -279,8 +279,8 @@ class Assembly(AssemblyPlot):
             print(template.render(
                     windowsize = self.windowsize,
                     contigs = json.dumps([self.contigs[c].json() for c in self.contigs]),
-                    threads = json.dumps({c:self.contigs[c].threads for c in self.contigs}),
-                    contig_depths = json.dumps({c:self.contigs[c].region_depths_json() for c in self.contigs}),
+                    read_alignments = json.dumps({c:self.contigs[c].read_alignments for c in self.contigs}),
+                    contig_alignments = json.dumps({c:self.contigs[c].contig_alignments_json() for c in self.contigs}),
                     ploidys = json.dumps({c:self.contigs[c].ploidys for c in self.contigs})
                  ),
                  file=html_report)
