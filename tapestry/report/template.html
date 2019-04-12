@@ -63,6 +63,7 @@
 var contigs = {{ contigs }};
 var threads = {{ threads }};
 var contig_depths = {{ contig_depths }};
+var ploidys = {{ ploidys }};
 
 var max_thread_depth = 0;
 var contig_domains = {};
@@ -248,16 +249,11 @@ var selected_contig = contigs.map(d => d.longname)[0]
 plot_threads(threads[selected_contig], threads_svg, threads_dim, contig_domains[selected_contig])
 plot_contig_depths(contig_depths[selected_contig], contig_depths_svg, contig_depths_dim, contig_domains[selected_contig])
 
-contigs_svg.selectAll("rect.contig")
+var contig_groups = contigs_svg.selectAll("g.contig")
     .data(contigs, function(d) { return d.name })
     .enter()
-    .append("rect")
+    .append("g")
     .attr("class", "contig")
-    .attr("y", function(d) { return contigs_dim.yscale(d.name); })
-    .attr("height", contigs_dim.yscale.bandwidth())
-    .attr("x", 0)
-    .attr("width", function(d) { return contigs_dim.xscale(d.length); })
-    .attr("fill", "grey")
     .attr("name", function(d) { return d.longname })
     .on("click", function() {
         selected_contig = d3.select(this).attr("name")
@@ -266,27 +262,31 @@ contigs_svg.selectAll("rect.contig")
         select_contig(selected_contig, contigs_svg, contigs_dim)
     })
 
-select_contig(selected_contig, contigs_svg, contigs_dim)
-
-contigs_svg.selectAll("circle.starttel")
-    .data(contigs.filter(c => c.tel_start > 0), function(d) { return d.name })
-    .enter()
-    .append("circle")
+contig_groups.append("rect")
+    .attr("y", function(d) { return contigs_dim.yscale(d.name); })
+    .attr("height", contigs_dim.yscale.bandwidth())
+    .attr("x", 0)
+    .attr("width", function(d) { return contigs_dim.xscale(d.length); })
+    .attr("fill", "grey")
+  
+contig_groups.append("circle")
     .attr("class", "starttel")
     .attr("cx", 0)
     .attr("cy", function(d) { return contigs_dim.yscale(d.name) + contigs_dim.yscale.bandwidth()/2; })
     .attr("r", contigs_dim.yscale.bandwidth())
     .attr("fill", "red")
+    .attr("opacity", function(d) {return (d.tel_start > 0) ? 1 : 0})
 
-contigs_svg.selectAll("circle.endtel")
-    .data(contigs.filter(c => c.tel_end > 0), function(d) { return d.name })
-    .enter()
-    .append("circle")
+contig_groups.append("circle")
     .attr("class", "endtel")
-     .attr("cx", function(d) { return contigs_dim.xscale(d.length) })
+    .attr("cx", function(d) { return contigs_dim.xscale(d.length) })
     .attr("cy", function(d) { return contigs_dim.yscale(d.name) + contigs_dim.yscale.bandwidth()/2; })
     .attr("r", contigs_dim.yscale.bandwidth())
     .attr("fill", "red")
+    .attr("opacity", function(d) {return (d.tel_end > 0) ? 1 : 0})
+
+select_contig(selected_contig, contigs_svg, contigs_dim)
+
 </script>
 </body>
 </html>

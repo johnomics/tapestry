@@ -230,8 +230,9 @@ class Contig:
 
     def get_ploidys(self, median_depth, components=5):
 
-        if len(self.read_depths) < components: # Can't fit model with fewer windows than components
-            return ploidys
+        # Can't fit model with fewer windows than components
+        if len(self.read_depths) < components: 
+            return [0] * len(self.read_depths)
 
         model = mixture.BayesianGaussianMixture(n_components=components, max_iter=1000)
 
