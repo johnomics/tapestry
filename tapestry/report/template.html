@@ -8,8 +8,14 @@
   
   <title>Tapestry Report</title>
   
-  <style type="text/css">{{ include_file('static/bootstrap.min.css') }}</style>
-  <style type="text/css">{{ include_file('static/bootstrap-table.min.css') }}</style>
+  <style type="text/css">
+      {{ include_file('static/bootstrap.min.css') }}
+      {{ include_file('static/bootstrap-table.min.css') }}
+  </style>
+  <style>
+      .xaxislabel { font-size: 12pt; font-weight: bold; }
+      .yaxislabel { font-size: 12pt; font-weight: bold; }
+  </style>
 </head>
 
 <body>
@@ -68,6 +74,13 @@ var read_alignments = {{ read_alignments }};
 var contig_alignments = {{ contig_alignments }};
 var ploidys = {{ ploidys }};
 
+var contig_names = {};
+var contig_ids = {};
+contigs.forEach(function(contig) {
+    contig_names[contig.longname] = contig.name;
+    contig_ids[contig.longname] = contig.id;
+})
+
 function check_max(max_val, list, i) {
     var list_max = d3.max(list, function(d) {return d[i]});
     if (max_val < list_max) {
@@ -87,44 +100,7 @@ function check_min(min_val, list, i) {
 
 function mq_opacity(mq) { return mq/60 }
 
-function plot_contig_alignments(alignments, dim) {
-
-    // contig_alignments:
-    // 0 begin
-    // 1 end
-    // 2 y position
-    // 3 contig name
-
-    var plot_height = d3.max(alignments, function(d) { return d[2]; });
-    var contigs_dim = { height: plot_height * 10 };
-    
-    contigs_dim.yscale = d3.scaleLinear().domain([0, plot_height])
-                                 .range([0, contigs_dim.height]);
-    
-    var plot = d3.select("#contig_alignment_plot");
-
-    plot.selectAll("svg").remove();
-
-    var svg = plot.append("svg")
-                  .attr("width", dim.width + dim.margin.left + dim.margin.right)
-                  .attr("height", contigs_dim.height + dim.margin.top + dim.margin.bottom)
-                  .append("g")
-                  .attr("transform", "translate(" + dim.margin.left + ",0)");
-    
-    var ca = svg.selectAll("line.contig_alignment")
-        .data(alignments)
-        .enter();
-    
-    ca.append("line")
-        .attr("class", "contig_alignment")
-        .attr("x1", function(d) { return dim.xscale(d[0]); })
-        .attr("x2", function(d) { return dim.xscale(d[1]); })
-        .attr("y1", function(d) { return contigs_dim.yscale(d[2]); })
-        .attr("y2", function(d) { return contigs_dim.yscale(d[2]); })
-        .style("stroke", "black");
-}
-
-function plot_read_alignments(alignments, dim, reads_dim) {
+function plot_read_alignments(alignments, dim, reads_dim, svg, contig) {
 
     // contig_read_alignments:
     //  0 read start including left clip
@@ -134,16 +110,16 @@ function plot_read_alignments(alignments, dim, reads_dim) {
     //  4 mapping quality
     //  5 y position on plot
 
-    var plot = d3.select("#read_alignment_plot");
+    svg.selectAll("line.read_alignment").remove()
+    svg.selectAll("text.xaxislabel").remove()
     
-    plot.selectAll("svg").remove();
+    svg.append("text")
+       .attr("class", "xaxislabel")
+       .attr("transform", "translate(" + (dim.width/2) + " ," + (reads_dim.height + dim.margin.top + 20) + ")")
+       .style("text-anchor", "middle")
+       .attr("fill", "black")
+       .text(contig + " Position (bp)");
 
-    var svg = plot.append("svg")
-                  .attr("width", dim.width + dim.margin.left + dim.margin.right)
-                  .attr("height", reads_dim.height + dim.margin.top + dim.margin.bottom)
-                  .append("g")
-                  .attr("transform", "translate(" + dim.margin.left + ",0)");
-    
     var ra = svg.selectAll("line.read_alignment")
         .data(alignments)
         .enter();
@@ -174,6 +150,48 @@ function plot_read_alignments(alignments, dim, reads_dim) {
           .attr("y2", function(d) { return reads_dim.yscale(d[5]); })
           .style("stroke-opacity", function(d) { return mq_opacity(d[4]) })
           .style("stroke", "pink");
+}
+
+function plot_contig_alignments(alignments, dim) {
+
+    // contig_alignments:
+    // 0 begin
+    // 1 end
+    // 2 y position
+    // 3 contig name
+
+    var plot_height = d3.max(alignments, function(d) { return d[2]; });
+    var contigs_dim = { height: plot_height * 10 };
+    
+    contigs_dim.yscale = d3.scaleLinear().domain([0, plot_height])
+                                 .range([0, contigs_dim.height]);
+    
+    var plot = d3.select("#contig_alignment_plot");
+
+    plot.selectAll("svg").remove();
+
+    var svg = plot.append("svg")
+                  .attr("width", dim.width + dim.margin.left + dim.margin.right)
+                  .attr("height", contigs_dim.height + dim.margin.top + dim.margin.bottom)
+                  .append("g")
+                  .attr("transform", "translate(" + dim.margin.left + ",0)")
+    
+    var ca = svg.selectAll("line.contig_alignment")
+        .data(alignments)
+        .enter();
+    
+    ca.append("line")
+        .attr("class", "contig_alignment")
+        .attr("x1", function(d) { return dim.xscale(d[0]); })
+        .attr("x2", function(d) { return dim.xscale(d[1]); })
+        .attr("y1", function(d) { return contigs_dim.yscale(d[2]); })
+        .attr("y2", function(d) { return contigs_dim.yscale(d[2]); })
+        .style("stroke", "black");
+}
+
+function plot_alignments(contig, dim, reads_dim, reads_svg) {
+    plot_read_alignments(read_alignments[contig], dim, reads_dim, reads_svg, contig_names[contig]);
+    plot_contig_alignments(contig_alignments[contig], dim);
 }
 
 function build_contig(contig, dim, assembly_dim, windowsize) {
@@ -245,14 +263,39 @@ var dim = { margin: {top: 20, right: 20, bottom: 50, left: 80} };
 dim.width = 1000 - dim.margin.left - dim.margin.right;
 
 dim.xscale = d3.scaleLinear()
-               .domain([min_read_pos, max_read_pos])
+               .domain([min_read_pos-1000, max_read_pos]) // -1000 to give axis some space
                .range([0, dim.width]);
+
+xaxis = d3.axisBottom(dim.xscale);
 
 var reads_dim = { height: 400 };
 
 reads_dim.yscale = d3.scaleLinear()
                      .domain([0, max_read_depth])
                      .range([reads_dim.height, 0]);
+
+reads_svg = d3.select("#read_alignment_plot")
+              .append("svg")
+              .attr("width", dim.width + dim.margin.left + dim.margin.right)
+              .attr("height", reads_dim.height + dim.margin.top + dim.margin.bottom)
+              .append("g")
+              .attr("transform", "translate(" + dim.margin.left + "," + (dim.margin.top + reads_dim.height) + ")")
+              .call(xaxis)
+              .attr("class", "xaxis")
+              .append("g")
+              .attr("transform", "translate(0,-" + reads_dim.height + ")")
+              .call(d3.axisLeft(reads_dim.yscale))
+              .attr("class", "yaxis")
+
+reads_svg.append("text")
+         .attr("class", "yaxislabel")
+         .attr("transform", "rotate(-90)")
+         .attr("y", 0 - (dim.margin.left * 0.6))
+         .attr("x",0 - (reads_dim.height / 2))
+         .attr("fill", "black")
+         .style("text-anchor", "middle")
+         .text("Reads"); 
+
 
 
 var assembly_dim = {height: contigs.length * 20};
@@ -270,16 +313,17 @@ var assembly_svg = d3.select("#assembly_plot")
             .attr("height", assembly_dim.height + dim.margin.top + dim.margin.bottom)
             .append("g")
             .attr("transform", "translate(" + dim.margin.left + "," + (dim.margin.top + assembly_dim.height) + ")")
-            .call(d3.axisBottom(dim.xscale))
+            .call(xaxis)
             .attr("class", "xAxis")
             .append("g")
             .attr("transform", "translate(0,-" + assembly_dim.height + ")")
             .call(d3.axisLeft(assembly_dim.yscale))
             .attr("class", "yAxis");
 
+
+
 var selected_contig = contigs.map(d => d.longname)[0];
-plot_read_alignments(read_alignments[selected_contig], dim, reads_dim);
-plot_contig_alignments(contig_alignments[selected_contig], dim);
+plot_alignments(selected_contig, dim, reads_dim, reads_svg);
 
 var contig_groups = assembly_svg.selectAll("g.contig")
     .data(contigs, function(d) { return d.name })
@@ -290,10 +334,9 @@ var contig_groups = assembly_svg.selectAll("g.contig")
     .attr("longname", function(d) { return d.longname })
     .attr("length", function(d) { return d.length })
     .on("click", function() {
-        selected_contig = d3.select(this).attr("longname")
-        plot_read_alignments(read_alignments[selected_contig], dim, reads_dim)
-        plot_contig_alignments(contig_alignments[selected_contig], dim)
-        select_contig(selected_contig, assembly_svg, dim, assembly_dim)
+        selected_contig = d3.select(this).attr("longname");
+        plot_alignments(selected_contig, dim, reads_dim, reads_svg);
+        select_contig(selected_contig, assembly_svg, dim, assembly_dim);
     })
     .each(function(d) { build_contig(d3.select(this), dim, assembly_dim, windowsize); });
 

@@ -107,10 +107,12 @@ class Assembly(AssemblyPlot):
         try:
             log.info(f"Loading genome assembly")
             assembly_out = open(self.filenames['assembly'], 'w') if no_assembly_found else None
+            contig_id = 0
             for rec in SeqIO.parse(open(self.assemblyfile, 'r'), "fasta"):
                 rec.seq = rec.seq.upper()
                 rec.id = f"{self.outdir}_{rec.id}"
-                contigs[rec.id] = Contig(rec, self.telomeres, self.windowsize, self.outdir, self.filenames)
+                contigs[rec.id] = Contig(contig_id, rec, self.telomeres, self.windowsize, self.outdir, self.filenames)
+                contig_id += 1
                 if no_assembly_found:
                     SeqIO.write(rec, assembly_out, "fasta")
         except IOError:
@@ -275,12 +277,18 @@ class Assembly(AssemblyPlot):
         env = Environment(loader=FileSystemLoader(report_folder))
         env.globals['include_file'] = include_file
         template = env.get_template('template.html')
+        
+        # Replace contig names in alignments with IDs, for report size and consistency, ignoring full contig alignment
+        contig_alignments = {c:self.contigs[c].contig_alignments_json() for c in self.contigs}
+        for c in contig_alignments:
+            contig_alignments[c] = [(b, e, r, self.contigs[c].id) for b, e, r, c in contig_alignments[c] if c in self.contigs]
+            
         with open(f"{self.outdir}/tapestry_report.html", 'wt') as html_report:
             print(template.render(
                     windowsize = self.windowsize,
                     contigs = json.dumps([self.contigs[c].json() for c in self.contigs]),
                     read_alignments = json.dumps({c:self.contigs[c].read_alignments for c in self.contigs}),
-                    contig_alignments = json.dumps({c:self.contigs[c].contig_alignments_json() for c in self.contigs}),
+                    contig_alignments = json.dumps(contig_alignments),
                     ploidys = json.dumps({c:self.contigs[c].ploidys for c in self.contigs})
                  ),
                  file=html_report)

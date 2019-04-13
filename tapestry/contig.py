@@ -30,7 +30,8 @@ def get_ploidy(contig, median_depth=None):
 
 class Contig:
 
-    def __init__(self, rec, telomeres, windowsize, outdir, filenames):
+    def __init__(self, cid, rec, telomeres, windowsize, outdir, filenames):
+        self.id = cid
         self.name = rec.id
         self.rec = rec
         self.telomeres = telomeres
@@ -65,6 +66,7 @@ class Contig:
 
     def json(self):
         return {
+            'id': self.id,
             'cluster': self.cluster,
             'longname' : self.name,
             'name': self.name.split('_')[-1], # Remove assembly name
@@ -105,7 +107,7 @@ class Contig:
                 assigned_row = len(plot_row_ends)
                 plot_row_ends.append(a.end)
 
-            alignments.append((a.begin, a.end, assigned_row, a.data))
+            alignments.append((a.begin, a.end, assigned_row+1, a.data))
 
         return alignments
 
@@ -375,7 +377,7 @@ class Contig:
                                  a.ref_end,         # contig alignment end
                                  end_position,      # read end including right clip
                                  a.mq,              # mapping quality
-                                 assigned_row       # y position on plot
+                                 assigned_row+1     # y position on plot
                            ]])
 
         return read_alignments
