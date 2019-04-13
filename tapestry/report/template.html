@@ -34,16 +34,15 @@
     </noscript>
 
 
-    <div id="read_alignment_plot">
-      <h2 id="page_title">Contig Details</h2>
-    </div>
+    <div id="read_alignment_plot"></div>
 
     <div id="contig_alignment_plot"></div>
 
     <div id="assembly_plot">
-      <h2 id="page_title">Assembly Overview</h2>
+        <h2 id="assembly">Assembly</h2>
     </div>
-
+    
+    <button type="button" id="export" class="btn btn-primary">Export contigs</button>
 
     <div id="contig_report">
       <h2>Contig Report</h2>
@@ -69,6 +68,7 @@
 {{ include_file('static/d3.min.js') }}
 
 var windowsize = {{ windowsize }};
+var median_depth = {{ median_depth }};
 var contigs = {{ contigs }};
 var read_alignments = {{ read_alignments }};
 var contig_alignments = {{ contig_alignments }};
@@ -80,6 +80,12 @@ contigs.forEach(function(contig) {
     contig_names[contig.longname] = contig.name;
     contig_ids[contig.longname] = contig.id;
 })
+
+ploidy_depths = [ {name:'haploid',    depth: median_depth * 0.5}, 
+                  {name:'diploid',    depth: median_depth      }, 
+                  {name:'triploid',   depth: median_depth * 1.5}, 
+                  {name:'tetraploid', depth: median_depth * 2  },
+                  {name:'repeat',     depth: median_depth * 2.5} ]
 
 function check_max(max_val, list, i) {
     var list_max = d3.max(list, function(d) {return d[i]});
@@ -100,7 +106,7 @@ function check_min(min_val, list, i) {
 
 function mq_opacity(mq) { return mq/60 }
 
-function plot_read_alignments(alignments, dim, reads_dim, svg, contig) {
+function plot_read_alignments(alignments, dim, assembly_dim, reads_dim, svg, contig) {
 
     // contig_read_alignments:
     //  0 read start including left clip
@@ -119,6 +125,28 @@ function plot_read_alignments(alignments, dim, reads_dim, svg, contig) {
        .style("text-anchor", "middle")
        .attr("fill", "black")
        .text(contig + " Position (bp)");
+
+    var rp = svg.selectAll("line.ploidy")
+       .data(ploidy_depths.filter(d => d.name != "repeat"))
+       .enter()
+       .append("line")
+       .attr("class", "ploidy")
+       .attr("x1", dim.xscale.range()[0]+1) // +1 to avoid axis
+       .attr("x2", dim.xscale.range()[1])
+       .attr("y1", function(d) { return reads_dim.yscale(d.depth) })
+       .attr("y2", function(d) { return reads_dim.yscale(d.depth) })
+       .style("stroke", function(d, i) { return assembly_dim.ploidyscale(i/5) })
+       .style("stroke-width", 2)
+
+    var rpl = svg.selectAll("text.ploidy")
+       .data(ploidy_depths)
+       .enter()
+       .append("text")
+       .attr("x", dim.xscale.range()[1] + 10 )
+       .attr("y", function(d) { return reads_dim.yscale(d.depth)+2 })
+       .style("fill", function(d, i) { return assembly_dim.ploidyscale(i/5) })
+       .style("text-anchor", "start")
+       .text(function(d) { return d.name })
 
     var ra = svg.selectAll("line.read_alignment")
         .data(alignments)
@@ -189,8 +217,8 @@ function plot_contig_alignments(alignments, dim) {
         .style("stroke", "black");
 }
 
-function plot_alignments(contig, dim, reads_dim, reads_svg) {
-    plot_read_alignments(read_alignments[contig], dim, reads_dim, reads_svg, contig_names[contig]);
+function plot_alignments(contig, dim, assembly_dim, reads_dim, reads_svg) {
+    plot_read_alignments(read_alignments[contig], dim, assembly_dim, reads_dim, reads_svg, contig_names[contig]);
     plot_contig_alignments(contig_alignments[contig], dim);
 }
 
@@ -258,7 +286,7 @@ for (var key in read_alignments) {
     max_read_pos   = check_max(max_read_pos, read_alignments[key], 3);
 }
 
-var dim = { margin: {top: 20, right: 20, bottom: 50, left: 80} };
+var dim = { margin: {top: 20, right: 80, bottom: 50, left: 80} };
 
 dim.width = 1000 - dim.margin.left - dim.margin.right;
 
@@ -323,7 +351,7 @@ var assembly_svg = d3.select("#assembly_plot")
 
 
 var selected_contig = contigs.map(d => d.longname)[0];
-plot_alignments(selected_contig, dim, reads_dim, reads_svg);
+plot_alignments(selected_contig, dim, assembly_dim, reads_dim, reads_svg);
 
 var contig_groups = assembly_svg.selectAll("g.contig")
     .data(contigs, function(d) { return d.name })
@@ -335,7 +363,7 @@ var contig_groups = assembly_svg.selectAll("g.contig")
     .attr("length", function(d) { return d.length })
     .on("click", function() {
         selected_contig = d3.select(this).attr("longname");
-        plot_alignments(selected_contig, dim, reads_dim, reads_svg);
+        plot_alignments(selected_contig, dim, assembly_dim, reads_dim, reads_svg);
         select_contig(selected_contig, assembly_svg, dim, assembly_dim);
     })
     .each(function(d) { build_contig(d3.select(this), dim, assembly_dim, windowsize); });
@@ -347,6 +375,10 @@ var $table = $('#table');
 $(function() {
   $table.bootstrapTable({data: contigs})
 });
+
+$('#export').on('click', function () {
+    contigs.forEach(function(c) {console.log(c.name);})
+})
 </script>
 </body>
 </html>

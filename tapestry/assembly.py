@@ -289,7 +289,8 @@ class Assembly(AssemblyPlot):
                     contigs = json.dumps([self.contigs[c].json() for c in self.contigs]),
                     read_alignments = json.dumps({c:self.contigs[c].read_alignments for c in self.contigs}),
                     contig_alignments = json.dumps(contig_alignments),
-                    ploidys = json.dumps({c:self.contigs[c].ploidys for c in self.contigs})
+                    ploidys = json.dumps({c:self.contigs[c].ploidys for c in self.contigs}),
+                    median_depth = self.median_depth
                  ),
                  file=html_report)
 
