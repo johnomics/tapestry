@@ -27,15 +27,17 @@
       </div>
     </noscript>
 
-    <div id="contig_length_plot">
-      <h2 id="page_title">Assembly Overview</h2>
-    </div>
 
     <div id="read_alignment_plot">
       <h2 id="page_title">Contig Details</h2>
     </div>
 
     <div id="contig_alignment_plot"></div>
+
+    <div id="assembly_plot">
+      <h2 id="page_title">Assembly Overview</h2>
+    </div>
+
 
     <div id="contig_report">
       <h2>Contig Report</h2>
@@ -66,56 +68,63 @@ var read_alignments = {{ read_alignments }};
 var contig_alignments = {{ contig_alignments }};
 var ploidys = {{ ploidys }};
 
-var max_read_depth = 0;
-var max_contig_depth = 0;
-var contig_domains = {};
-
-for (var key in read_alignments) {
-    var max_contig_read_depth = d3.max(read_alignments[key], function(d) {return d[5]});
-    if (max_read_depth < max_contig_read_depth) {
-        max_read_depth = max_contig_read_depth
+function check_max(max_val, list, i) {
+    var list_max = d3.max(list, function(d) {return d[i]});
+    if (max_val < list_max) {
+        max_val = list_max;
     }
-    var max_contig_contig_depth = d3.max(contig_alignments[key], function(d) {return d[2]})
-    if (max_contig_depth < max_contig_contig_depth) {
-        max_contig_depth = max_contig_contig_depth
-    }
-    
-    contig_domains[key] = [d3.min(read_alignments[key], function(d) {return d[0]; }),
-                           d3.max(read_alignments[key], function(d) {return d[3]; }) ]
+    return max_val;
 }
 
-var $table = $('#table')
-$(function() {
-  $table.bootstrapTable({data: contigs})
-})
+function check_min(min_val, list, i) {
+    var list_min = d3.min(list, function(d) {return d[i]});
+    if (min_val > list_min) {
+        min_val = list_min;
+    }
+    return min_val;
+}
+
 
 function mq_opacity(mq) { return mq/60 }
 
-function plot_contig_alignments(contig_alignments, contig_alignments_svg, contig_alignments_dim, domain) {
+function plot_contig_alignments(alignments, dim) {
 
     // contig_alignments:
     // 0 begin
     // 1 end
-    // 2 contig name
+    // 2 y position
+    // 3 contig name
 
-    contig_alignments_dim.xscale.domain(domain)
+    var plot_height = d3.max(alignments, function(d) { return d[2]; });
+    var contigs_dim = { height: plot_height * 10 };
     
-    contig_alignments_svg.selectAll("line.contig_alignment").remove()
+    contigs_dim.yscale = d3.scaleLinear().domain([0, plot_height])
+                                 .range([0, contigs_dim.height]);
     
-    var ca = contig_alignments_svg.selectAll("line.contig_alignment")
-        .data(contig_alignments)
-        .enter()
+    var plot = d3.select("#contig_alignment_plot");
+
+    plot.selectAll("svg").remove();
+
+    var svg = plot.append("svg")
+                  .attr("width", dim.width + dim.margin.left + dim.margin.right)
+                  .attr("height", contigs_dim.height + dim.margin.top + dim.margin.bottom)
+                  .append("g")
+                  .attr("transform", "translate(" + dim.margin.left + ",0)");
+    
+    var ca = svg.selectAll("line.contig_alignment")
+        .data(alignments)
+        .enter();
     
     ca.append("line")
         .attr("class", "contig_alignment")
-        .attr("x1", function(d) { return contig_alignments_dim.xscale(d[0]); })
-        .attr("x2", function(d) { return contig_alignments_dim.xscale(d[1]); })
-        .attr("y1", function(d) { return contig_alignments_dim.yscale(d[2]); })
-        .attr("y2", function(d) { return contig_alignments_dim.yscale(d[2]); })
-        .style("stroke", "black")
+        .attr("x1", function(d) { return dim.xscale(d[0]); })
+        .attr("x2", function(d) { return dim.xscale(d[1]); })
+        .attr("y1", function(d) { return contigs_dim.yscale(d[2]); })
+        .attr("y2", function(d) { return contigs_dim.yscale(d[2]); })
+        .style("stroke", "black");
 }
 
-function plot_read_alignments(contig_read_alignments, read_alignments_svg, read_alignments_dim, domain) {
+function plot_read_alignments(alignments, dim, reads_dim) {
 
     // contig_read_alignments:
     //  0 read start including left clip
@@ -125,135 +134,154 @@ function plot_read_alignments(contig_read_alignments, read_alignments_svg, read_
     //  4 mapping quality
     //  5 y position on plot
 
-    read_alignments_dim.xscale.domain(domain)
+    var plot = d3.select("#read_alignment_plot");
     
-    read_alignments_svg.selectAll("line.read_alignment").remove()
-    
-    var alignments = read_alignments_svg.selectAll("line.read_alignment")
-        .data(contig_read_alignments)
-        .enter()
-    
-    alignments.append("line")
-        .attr("class", "read_alignment")
-        .attr("x1", function(d) { return read_alignments_dim.xscale(d[1]); })
-        .attr("x2", function(d) { return read_alignments_dim.xscale(d[2]); })
-        .attr("y1", function(d) { return read_alignments_dim.yscale(d[5]); })
-        .attr("y2", function(d) { return read_alignments_dim.yscale(d[5]); })
-        .style("stroke-opacity", function(d) { return mq_opacity(d[4]) })
-        .style("stroke", "blue")
+    plot.selectAll("svg").remove();
 
-    alignments.append("line")
+    var svg = plot.append("svg")
+                  .attr("width", dim.width + dim.margin.left + dim.margin.right)
+                  .attr("height", reads_dim.height + dim.margin.top + dim.margin.bottom)
+                  .append("g")
+                  .attr("transform", "translate(" + dim.margin.left + ",0)");
+    
+    var ra = svg.selectAll("line.read_alignment")
+        .data(alignments)
+        .enter();
+    
+    ra.append("line")
         .attr("class", "read_alignment")
-        .attr("x1", function(d) { return read_alignments_dim.xscale(d[0]); })
-        .attr("x2", function(d) { return read_alignments_dim.xscale(d[1]); })
-        .attr("y1", function(d) { return read_alignments_dim.yscale(d[5]); })
-        .attr("y2", function(d) { return read_alignments_dim.yscale(d[5]); })
+        .attr("x1", function(d) { return dim.xscale(d[1]); })
+        .attr("x2", function(d) { return dim.xscale(d[2]); })
+        .attr("y1", function(d) { return reads_dim.yscale(d[5]); })
+        .attr("y2", function(d) { return reads_dim.yscale(d[5]); })
         .style("stroke-opacity", function(d) { return mq_opacity(d[4]) })
-        .style("stroke", "orange")
+        .style("stroke", "blue");
 
-    alignments.append("line")
+    ra.append("line")
+        .attr("class", "read_alignment")
+        .attr("x1", function(d) { return dim.xscale(d[0]); })
+        .attr("x2", function(d) { return dim.xscale(d[1]); })
+        .attr("y1", function(d) { return reads_dim.yscale(d[5]); })
+        .attr("y2", function(d) { return reads_dim.yscale(d[5]); })
+        .style("stroke-opacity", function(d) { return mq_opacity(d[4]) })
+        .style("stroke", "orange");
+
+    ra.append("line")
           .attr("class", "read_alignment")
-          .attr("x1", function(d) { return read_alignments_dim.xscale(d[2]); })
-          .attr("x2", function(d) { return read_alignments_dim.xscale(d[3]); })
-          .attr("y1", function(d) { return read_alignments_dim.yscale(d[5]); })
-          .attr("y2", function(d) { return read_alignments_dim.yscale(d[5]); })
+          .attr("x1", function(d) { return dim.xscale(d[2]); })
+          .attr("x2", function(d) { return dim.xscale(d[3]); })
+          .attr("y1", function(d) { return reads_dim.yscale(d[5]); })
+          .attr("y2", function(d) { return reads_dim.yscale(d[5]); })
           .style("stroke-opacity", function(d) { return mq_opacity(d[4]) })
-          .style("stroke", "pink")
+          .style("stroke", "pink");
 }
 
-function select_contig(selected_contig, contigs_svg, contigs_dim) {
-    var selected = contigs_svg.selectAll("circle.selected")
+function build_contig(contig, dim, assembly_dim, windowsize) {
+
+    contig.selectAll("rect.ploidy")
+        .data(ploidys[contig.attr("longname")])
+        .enter()
+        .append("rect")
+        .attr("class", "ploidy")
+        .attr("y", function(d) { return assembly_dim.yscale(contig.attr("name")); })
+        .attr("height", assembly_dim.yscale.bandwidth())
+        .attr("windowsize", windowsize)
+        .attr("i", function(d, i) { return i; })
+        .attr("pos", function(d, i) { return i*(windowsize/2); })
+        .attr("contiglength", contig.attr("length"))
+        .attr("widthval", function(d, i) { return d3.min([windowsize, contig.attr("length") - i*(windowsize/2)]); })
+        .attr("x", function(d, i) { return dim.xscale(i*(windowsize/2)); }) // windowsize/2 because they are sliding
+        .attr("width", function(d, i) {
+            // either window size or the remainder at the end of the contig; subtract the left contig overhang up to position 0
+            return dim.xscale(d3.min([windowsize, contig.attr("length") - i*(windowsize/2)])) - dim.xscale(0);
+        })
+        .attr("fill", function(d) { return assembly_dim.ploidyscale(d/5); })
+        .attr("stroke-opacity", 0);
+
+    contig.append("circle")
+        .attr("class", "starttel")
+        .attr("cx", dim.xscale(0))
+        .attr("cy", function(d) { return assembly_dim.yscale(d.name) + assembly_dim.yscale.bandwidth()/2; })
+        .attr("r", assembly_dim.yscale.bandwidth())
+        .attr("fill", "red")
+        .attr("opacity", function(d) {return (d.tel_start > 0) ? 1 : 0});
+    
+    contig.append("circle")
+        .attr("class", "endtel")
+        .attr("length", function(d) { return d.length })
+        .attr("cx", function(d) { return dim.xscale(d.length) })
+        .attr("cy", function(d) { return assembly_dim.yscale(d.name) + assembly_dim.yscale.bandwidth()/2; })
+        .attr("r", assembly_dim.yscale.bandwidth())
+        .attr("fill", "red")
+        .attr("opacity", function(d) {return (d.tel_end > 0) ? 1 : 0});
+}
+
+function select_contig(selected_contig, assembly_svg, dim, assembly_dim) {
+    var selected = assembly_svg.selectAll("circle.selected")
                     .data(contigs.filter(c => c.longname == selected_contig), function(d) { return d.longname })
     selected.enter()
         .append("circle")
         .attr("class", "selected")
-        .attr("cx", contigs_dim.width + contigs_dim.margin.right/2)
-        .attr("cy", function(d) { return contigs_dim.yscale(d.name) + contigs_dim.yscale.bandwidth()/2; })
-        .attr("r", contigs_dim.yscale.bandwidth())
-        .attr("fill", "green")
+        .attr("cx", dim.width + dim.margin.right/2)
+        .attr("cy", function(d) { return assembly_dim.yscale(d.name) + assembly_dim.yscale.bandwidth()/2; })
+        .attr("r", assembly_dim.yscale.bandwidth())
+        .attr("fill", "green");
 
-    selected.exit()
-        .remove()
+    selected.exit().remove();
 }
 
-var contigs_dim = {
-    margin: {top: 20, right: 20, bottom: 50, left: 80},
-    height: contigs.length * 20
+var max_read_depth = 0;
+var min_read_pos = 0;
+var max_read_pos = 0;
+
+for (var key in read_alignments) {
+    max_read_depth = check_max(max_read_depth, read_alignments[key], 5);
+    min_read_pos   = check_min(min_read_pos, read_alignments[key], 0);
+    max_read_pos   = check_max(max_read_pos, read_alignments[key], 3);
 }
 
-contigs_dim.width = 1000 - contigs_dim.margin.left - contigs_dim.margin.right
+var dim = { margin: {top: 20, right: 20, bottom: 50, left: 80} };
+
+dim.width = 1000 - dim.margin.left - dim.margin.right;
+
+dim.xscale = d3.scaleLinear()
+               .domain([min_read_pos, max_read_pos])
+               .range([0, dim.width]);
+
+var reads_dim = { height: 400 };
+
+reads_dim.yscale = d3.scaleLinear()
+                     .domain([0, max_read_depth])
+                     .range([reads_dim.height, 0]);
 
 
-var read_alignments_dim = {
-    margin: {top: 20, right: 20, bottom: 0, left: 80},
-    height: 400
-}
+var assembly_dim = {height: contigs.length * 20};
 
-var contig_alignments_dim = {
-    margin: {top: 0, right: 20, bottom: 50, left: 80},
-    height: 100
-}
+assembly_dim.yscale = d3.scaleBand()
+                      .domain(contigs.map(d => d.name))
+                      .rangeRound([0, assembly_dim.height])
+                      .padding(0.8);
 
-single_contig_width = 1500
-read_alignments_dim.width = single_contig_width - read_alignments_dim.margin.left - read_alignments_dim.margin.right
-contig_alignments_dim.width = single_contig_width - contig_alignments_dim.margin.left - contig_alignments_dim.margin.right
+assembly_dim.ploidyscale = d3.scaleSequential(d3.interpolateGreens);
 
-contigs_dim.xscale = d3.scaleLinear()
-                       .domain([0, d3.max(contigs, function(d) { return d.length; })])
-                       .range([0, contigs_dim.width]);
-
-contigs_dim.yscale = d3.scaleBand()
-                       .domain(contigs.map(d => d.name))
-                       .rangeRound([0, contigs_dim.height])
-                       .padding(0.8);
-
-contigs_dim.ploidyscale = d3.scaleSequential(d3.interpolateGreens);
-
-read_alignments_dim.xscale = d3.scaleLinear()
-                       .range([0, read_alignments_dim.width]);
-
-read_alignments_dim.yscale = d3.scaleLinear()
-                       .domain([0, max_read_depth])
-                       .range([read_alignments_dim.height, 0]);
-
-contig_alignments_dim.xscale = d3.scaleLinear()
-                             .range([0, contig_alignments_dim.width]);
-
-contig_alignments_dim.yscale = d3.scaleLinear()
-                             .domain([0, max_contig_depth])
-                             .range([0, contig_alignments_dim.height]);
-
-contig_alignments_dim.colscale = d3.scaleOrdinal(d3.interpolateWarm)
-                                .domain([0, 100])
-
-var contigs_svg = d3.select("#contig_length_plot")
+var assembly_svg = d3.select("#assembly_plot")
             .append("svg")
-            .attr("width", contigs_dim.width + contigs_dim.margin.left + contigs_dim.margin.right)
-            .attr("height", contigs_dim.height + contigs_dim.margin.top + contigs_dim.margin.bottom)
+            .attr("width", dim.width + dim.margin.left + dim.margin.right)
+            .attr("height", assembly_dim.height + dim.margin.top + dim.margin.bottom)
             .append("g")
-            .attr("transform", "translate(" + contigs_dim.margin.left + "," + (contigs_dim.margin.top + contigs_dim.height) + ")")
-            .call(d3.axisBottom(contigs_dim.xscale))
+            .attr("transform", "translate(" + dim.margin.left + "," + (dim.margin.top + assembly_dim.height) + ")")
+            .call(d3.axisBottom(dim.xscale))
             .attr("class", "xAxis")
             .append("g")
-            .attr("transform", "translate(0,-" + contigs_dim.height + ")")
-            .call(d3.axisLeft(contigs_dim.yscale))
+            .attr("transform", "translate(0,-" + assembly_dim.height + ")")
+            .call(d3.axisLeft(assembly_dim.yscale))
             .attr("class", "yAxis");
 
-var read_alignments_svg = d3.select("#read_alignment_plot")
-            .append("svg")
-            .attr("width", read_alignments_dim.width)
-            .attr("height", read_alignments_dim.height);
+var selected_contig = contigs.map(d => d.longname)[0];
+plot_read_alignments(read_alignments[selected_contig], dim, reads_dim);
+plot_contig_alignments(contig_alignments[selected_contig], dim);
 
-var contig_alignments_svg = d3.select("#contig_alignment_plot")
-            .append("svg")
-            .attr("width", contig_alignments_dim.width)
-            .attr("height", contig_alignments_dim.height)
-
-var selected_contig = contigs.map(d => d.longname)[0]
-plot_read_alignments(read_alignments[selected_contig], read_alignments_svg, read_alignments_dim, contig_domains[selected_contig])
-plot_contig_alignments(contig_alignments[selected_contig], contig_alignments_svg, contig_alignments_dim, contig_domains[selected_contig])
-
-var contig_groups = contigs_svg.selectAll("g.contig")
+var contig_groups = assembly_svg.selectAll("g.contig")
     .data(contigs, function(d) { return d.name })
     .enter()
     .append("g")
@@ -263,53 +291,19 @@ var contig_groups = contigs_svg.selectAll("g.contig")
     .attr("length", function(d) { return d.length })
     .on("click", function() {
         selected_contig = d3.select(this).attr("longname")
-        plot_read_alignments(read_alignments[selected_contig], read_alignments_svg, read_alignments_dim, contig_domains[selected_contig])
-        plot_contig_alignments(contig_alignments[selected_contig], contig_alignments_svg, contig_alignments_dim, contig_domains[selected_contig])
-        select_contig(selected_contig, contigs_svg, contigs_dim)
+        plot_read_alignments(read_alignments[selected_contig], dim, reads_dim)
+        plot_contig_alignments(contig_alignments[selected_contig], dim)
+        select_contig(selected_contig, assembly_svg, dim, assembly_dim)
     })
-    .each(build_contig)
+    .each(function(d) { build_contig(d3.select(this), dim, assembly_dim, windowsize); });
 
-function build_contig(p, i, nodes) {
-    var contig = d3.select(this)
+select_contig(selected_contig, assembly_svg, dim, assembly_dim);
 
-    contig.append("rect")
-        .attr("y", function(d) { return contigs_dim.yscale(d.name); })
-        .attr("height", contigs_dim.yscale.bandwidth())
-        .attr("x", 0)
-        .attr("width", function(d) { return contigs_dim.xscale(d.length); })
-        .attr("fill", "grey")
+var $table = $('#table');
 
-    contig.selectAll("rect.ploidy")
-        .data(ploidys[contig.attr("longname")])
-        .enter()
-        .append("rect")
-        .attr("class", "ploidy")
-        .attr("y", function(d) { return contigs_dim.yscale(contig.attr("name")); })
-        .attr("height", contigs_dim.yscale.bandwidth())
-        .attr("x", function(d, i) { return contigs_dim.xscale(i*(windowsize/2)); }) // windowsize/2 because they are sliding
-        .attr("width", function(d, i) { return contigs_dim.xscale(d3.min([windowsize, contig.attr("length") - i*(windowsize/2)])) })
-        .attr("fill", function(d) { return contigs_dim.ploidyscale(d/5); })
-        .attr("stroke-opacity", 0)
-
-    contig.append("circle")
-        .attr("class", "starttel")
-        .attr("cx", 0)
-        .attr("cy", function(d) { return contigs_dim.yscale(d.name) + contigs_dim.yscale.bandwidth()/2; })
-        .attr("r", contigs_dim.yscale.bandwidth())
-        .attr("fill", "red")
-        .attr("opacity", function(d) {return (d.tel_start > 0) ? 1 : 0})
-    
-    contig.append("circle")
-        .attr("class", "endtel")
-        .attr("cx", function(d) { return contigs_dim.xscale(d.length) })
-        .attr("cy", function(d) { return contigs_dim.yscale(d.name) + contigs_dim.yscale.bandwidth()/2; })
-        .attr("r", contigs_dim.yscale.bandwidth())
-        .attr("fill", "red")
-        .attr("opacity", function(d) {return (d.tel_end > 0) ? 1 : 0})
-}
-
-select_contig(selected_contig, contigs_svg, contigs_dim)
-
+$(function() {
+  $table.bootstrapTable({data: contigs})
+});
 </script>
 </body>
 </html>
