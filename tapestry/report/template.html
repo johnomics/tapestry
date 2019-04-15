@@ -74,10 +74,16 @@ var read_alignments = {{ read_alignments }};
 var contig_alignments = {{ contig_alignments }};
 var ploidys = {{ ploidys }};
 
+contigs.sort(function(a,b) {
+    return a.length < b.length;
+})
+
 var contig_names = {};
+var contig_short_long = {};
 var contig_ids = {};
 contigs.forEach(function(contig) {
     contig_names[contig.longname] = contig.name;
+    contig_short_long[contig.name] = contig.longname;
     contig_ids[contig.longname] = contig.id;
 })
 
@@ -247,12 +253,17 @@ function select_contig(selected_contig, assembly_svg, dim, assembly_dim) {
     selected.enter()
         .append("circle")
         .attr("class", "selected")
-        .attr("cx", dim.width + dim.margin.right/2)
+        .attr("cx", -dim.margin.left + 5)
         .attr("cy", function(d) { return assembly_dim.yscale(d.name) + assembly_dim.yscale.bandwidth()/2; })
         .attr("r", assembly_dim.yscale.bandwidth())
         .attr("fill", "green");
 
     selected.exit().remove();
+}
+
+function contig_click(contig) {
+    select_contig(contig, assembly_svg, dim, assembly_dim);
+    plot_alignments(contig, dim, assembly_dim, reads_dim, reads_svg);
 }
 
 var max_read_depth = 0;
@@ -298,6 +309,9 @@ var assembly_svg = d3.select("#assembly_plot")
             .call(d3.axisLeft(assembly_dim.yscale))
             .attr("class", "yAxis");
 
+assembly_svg
+    .selectAll(".tick")
+    .on("click", function(d) { contig_click(contig_short_long[d]); })
 
 var reads_dim = { height: 400 };
 
@@ -312,11 +326,11 @@ reads_svg = d3.select("#read_alignment_plot")
               .append("g")
               .attr("transform", "translate(" + dim.margin.left + "," + (dim.margin.top + reads_dim.height) + ")")
               .call(xaxis)
-              .attr("class", "xaxis")
+              .attr("class", "read.xaxis")
               .append("g")
               .attr("transform", "translate(0,-" + reads_dim.height + ")")
               .call(d3.axisLeft(reads_dim.yscale))
-              .attr("class", "yaxis")
+              .attr("class", "read.yaxis")
 
 reads_svg.append("text")
          .attr("class", "yaxislabel")
@@ -353,6 +367,7 @@ reads_svg.selectAll("text.ploidy")
 var selected_contig = contigs.map(d => d.longname)[0];
 plot_alignments(selected_contig, dim, assembly_dim, reads_dim, reads_svg);
 
+
 var contig_groups = assembly_svg.selectAll("g.contig")
     .data(contigs, function(d) { return d.name })
     .enter()
@@ -361,11 +376,7 @@ var contig_groups = assembly_svg.selectAll("g.contig")
     .attr("name", function(d) { return d.name })
     .attr("longname", function(d) { return d.longname })
     .attr("length", function(d) { return d.length })
-    .on("click", function() {
-        selected_contig = d3.select(this).attr("longname");
-        plot_alignments(selected_contig, dim, assembly_dim, reads_dim, reads_svg);
-        select_contig(selected_contig, assembly_svg, dim, assembly_dim);
-    })
+    .on("click", function(d) { contig_click(d.longname); })
     .each(function(d) { build_contig(d3.select(this), dim, assembly_dim, windowsize); });
 
 select_contig(selected_contig, assembly_svg, dim, assembly_dim);
