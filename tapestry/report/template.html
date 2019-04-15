@@ -83,26 +83,40 @@ var ploidys = {{ ploidys }};
 
 sortfuncs = {
     'length' : function(a,b) {
-        return a.length > b.length;
+        if (a.included && !b.included) return -1;
+        if (b.included && !a.included) return 1;
+        return a.length - b.length;
     },
     'gc' : function(a,b) {
-        return a.gc > b.gc;
+        if (a.included && !b.included) return -1;
+        if (b.included && !a.included) return 1;
+        return a.gc - b.gc;
     },
     'cluster' : function(a,b) {
-        return a.cluster > b.cluster;
+        if (a.included && !b.included) return -1;
+        if (b.included && !a.included) return 1;
+        return a.cluster - b.cluster;
     }
 }
 
-contigs.sort(sortfuncs['length'])
 
 var contig_names = {};
 var contig_short_long = {};
-var contig_ids = {};
 contigs.forEach(function(contig) {
+    contig.included = true
     contig_names[contig.longname] = contig.name;
     contig_short_long[contig.name] = contig.longname;
-    contig_ids[contig.longname] = contig.id;
 })
+
+function sort_contigs (sortfunc, contigs, contig_positions) {
+    contigs.sort(sortfunc);
+    for (var i = 0; i < contigs.length; i++) {
+        contig_positions[contigs[i].name] = i;
+    }
+}
+
+var contig_positions = {};
+sort_contigs(sortfuncs['length'], contigs, contig_positions)
 
 ploidy_depths = [ {name:'haploid',    depth: median_depth * 0.5}, 
                   {name:'diploid',    depth: median_depth      }, 
@@ -251,17 +265,31 @@ function build_contig(contig, dim, assembly_dim, windowsize) {
         .attr("class", "telomere end")
         .attr("cx", function(d) { return dim.xscale(d.length) })
         .attr("opacity", function(d) {return (d.tel_end > 0) ? 1 : 0});
-    
+
     contig.selectAll(".telomere")
         .attr("contig", contig.attr("name"))
         .attr("cy", function(d) { return assembly_dim.yscale(d.name) + assembly_dim.yscale.bandwidth()/2; })
         .attr("r", assembly_dim.yscale.bandwidth())
         .attr("fill", "red")
+
+    contig.append("circle")
+        .attr("class", "toggle")
+        .attr("contig", contig.attr("name"))
+        .attr("cx", 0)
+        .attr("cy", function(d) { return assembly_dim.yscale(d.name) + assembly_dim.yscale.bandwidth()/2; })
+        .attr("r", assembly_dim.yscale.bandwidth())
+        .attr("fill", function(d) { return contigs[contig_positions[d.name]].included ? "black" : "grey"})
+        .on("click", function(d) {
+            toggle = d3.select(this)
+            contig_id = contig_positions[toggle.attr("contig")]
+            contigs[contig_id].included = !contigs[contig_id].included
+            toggle.attr("fill", contigs[contig_id].included ?  "black" : "grey")
+        })
 }
 
 function select_contig(selected_contig, assembly_svg, dim, assembly_dim) {
     var selected = assembly_svg.selectAll("circle.selected")
-                    .data(contigs.filter(c => c.longname == selected_contig), function(d) { return d.longname })
+                    .data(contigs.filter(c => c.longname === selected_contig), function(d) { return d.longname })
     selected.enter()
         .append("circle")
         .attr("class", "selected")
@@ -396,18 +424,8 @@ var contig_groups = assembly_svg.selectAll("g.contig")
 
 select_contig(selected_contig, assembly_svg, dim, assembly_dim);
 
-function reorder_contig (contig, assembly_dim) {
-assembly_dim.yscale = d3.scaleBand()
-                      .domain(contigs.map(d => d.name))
-    contig.selectAll("rect.ploidy")
-        .attr("y", function(d) { return assembly_dim.yscale(contig.attr("name")); })
-
-    contig.selectAll("circle")
-    .attr("cy", function(d) { return assembly_dim.yscale(d.name) + assembly_dim.yscale.bandwidth()/2; })
-}
-
-d3.selectAll("input[name='sort']").on("change", function(){
-    contigs.sort(sortfuncs[this.value])
+function reorder_assembly (sortfunc) {
+    sort_contigs(sortfuncs[sortfunc], contigs, contig_positions)
     assembly_dim.yscale.domain(contigs.map(d => d.name))
     
     t = d3.transition().duration(1000).ease(d3.easeCubic);
@@ -420,8 +438,9 @@ d3.selectAll("input[name='sort']").on("change", function(){
     assembly_svg.selectAll("circle")
         .transition(t)
         .attr("cy", function(d) { return assembly_dim.yscale(d3.select(this).attr("contig")) + assembly_dim.yscale.bandwidth()/2; })
+}
 
-})
+d3.selectAll("input[name='sort']").on("change", function() {reorder_assembly(this.value)})
 
 $('#export').on('click', function () {
     contigs.forEach(function(c) {console.log(c.name);})
