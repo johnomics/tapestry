@@ -116,7 +116,6 @@ function plot_read_alignments(alignments, dim, assembly_dim, reads_dim, svg, con
     //  4 mapping quality
     //  5 y position on plot
 
-    svg.selectAll("line.read_alignment").remove()
     svg.selectAll("text.xaxislabel").remove()
     
     svg.append("text")
@@ -126,27 +125,7 @@ function plot_read_alignments(alignments, dim, assembly_dim, reads_dim, svg, con
        .attr("fill", "black")
        .text(contig + " Position (bp)");
 
-    var rp = svg.selectAll("line.ploidy")
-       .data(ploidy_depths.filter(d => d.name != "repeat"))
-       .enter()
-       .append("line")
-       .attr("class", "ploidy")
-       .attr("x1", dim.xscale.range()[0]+1) // +1 to avoid axis
-       .attr("x2", dim.xscale.range()[1])
-       .attr("y1", function(d) { return reads_dim.yscale(d.depth) })
-       .attr("y2", function(d) { return reads_dim.yscale(d.depth) })
-       .style("stroke", function(d, i) { return assembly_dim.ploidyscale(i/5) })
-       .style("stroke-width", 2)
-
-    var rpl = svg.selectAll("text.ploidy")
-       .data(ploidy_depths)
-       .enter()
-       .append("text")
-       .attr("x", dim.xscale.range()[1] + 10 )
-       .attr("y", function(d) { return reads_dim.yscale(d.depth)+2 })
-       .style("fill", function(d, i) { return assembly_dim.ploidyscale(i/5) })
-       .style("text-anchor", "start")
-       .text(function(d) { return d.name })
+    svg.selectAll("line.read_alignment").remove()
 
     var ra = svg.selectAll("line.read_alignment")
         .data(alignments)
@@ -296,6 +275,30 @@ dim.xscale = d3.scaleLinear()
 
 xaxis = d3.axisBottom(dim.xscale);
 
+
+var assembly_dim = {height: contigs.length * 20};
+
+assembly_dim.yscale = d3.scaleBand()
+                      .domain(contigs.map(d => d.name))
+                      .rangeRound([0, assembly_dim.height])
+                      .padding(0.8);
+
+assembly_dim.ploidyscale = d3.scaleSequential(d3.interpolateGreens);
+
+var assembly_svg = d3.select("#assembly_plot")
+            .append("svg")
+            .attr("width", dim.width + dim.margin.left + dim.margin.right)
+            .attr("height", assembly_dim.height + dim.margin.top + dim.margin.bottom)
+            .append("g")
+            .attr("transform", "translate(" + dim.margin.left + "," + (dim.margin.top + assembly_dim.height) + ")")
+            .call(xaxis)
+            .attr("class", "xAxis")
+            .append("g")
+            .attr("transform", "translate(0,-" + assembly_dim.height + ")")
+            .call(d3.axisLeft(assembly_dim.yscale))
+            .attr("class", "yAxis");
+
+
 var reads_dim = { height: 400 };
 
 reads_dim.yscale = d3.scaleLinear()
@@ -324,30 +327,27 @@ reads_svg.append("text")
          .style("text-anchor", "middle")
          .text("Reads"); 
 
+reads_svg.selectAll("line.ploidy")
+   .data(ploidy_depths.filter(d => d.name != "repeat"))
+   .enter()
+   .append("line")
+   .attr("class", "ploidy")
+   .attr("x1", dim.xscale.range()[0]+1) // +1 to avoid axis
+   .attr("x2", dim.xscale.range()[1])
+   .attr("y1", function(d) { return reads_dim.yscale(d.depth) })
+   .attr("y2", function(d) { return reads_dim.yscale(d.depth) })
+   .style("stroke", function(d, i) { return assembly_dim.ploidyscale(i/5) })
+   .style("stroke-width", 2)
 
-
-var assembly_dim = {height: contigs.length * 20};
-
-assembly_dim.yscale = d3.scaleBand()
-                      .domain(contigs.map(d => d.name))
-                      .rangeRound([0, assembly_dim.height])
-                      .padding(0.8);
-
-assembly_dim.ploidyscale = d3.scaleSequential(d3.interpolateGreens);
-
-var assembly_svg = d3.select("#assembly_plot")
-            .append("svg")
-            .attr("width", dim.width + dim.margin.left + dim.margin.right)
-            .attr("height", assembly_dim.height + dim.margin.top + dim.margin.bottom)
-            .append("g")
-            .attr("transform", "translate(" + dim.margin.left + "," + (dim.margin.top + assembly_dim.height) + ")")
-            .call(xaxis)
-            .attr("class", "xAxis")
-            .append("g")
-            .attr("transform", "translate(0,-" + assembly_dim.height + ")")
-            .call(d3.axisLeft(assembly_dim.yscale))
-            .attr("class", "yAxis");
-
+reads_svg.selectAll("text.ploidy")
+   .data(ploidy_depths)
+   .enter()
+   .append("text")
+   .attr("x", dim.xscale.range()[1] + 10 )
+   .attr("y", function(d) { return reads_dim.yscale(d.depth)+2 })
+   .style("fill", function(d, i) { return assembly_dim.ploidyscale(i/5) })
+   .style("text-anchor", "start")
+   .text(function(d) { return d.name })
 
 
 var selected_contig = contigs.map(d => d.longname)[0];
