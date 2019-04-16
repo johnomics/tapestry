@@ -444,10 +444,18 @@ function reorder_assembly () {
 
 d3.selectAll("input[name='sort'], input[name='sortdir']").on("change", function() {reorder_assembly()})
 
-$('#export').click(function () {
-    contigs.forEach(function(c) {console.log(c.name);})
-})
+$('#export').click(function (e) {
+    var text = contigs.filter(c => c.included).map(c => c.name).join('\n');
+    var filename = "filtered_assembly.txt";
 
+    var element = document.createElement('a');
+    element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+    element.setAttribute('download', filename);
+    element.style.display = 'none';
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+})
 
 $(function() {
   $('#table').bootstrapTable({data: contigs})
