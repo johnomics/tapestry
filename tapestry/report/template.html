@@ -41,9 +41,13 @@
     <div id="assembly">
         <h2 id="assembly">Assembly</h2>
         <form id="sortvar">
-            <input type="radio" name="sort" value="length">Length<br>
+            <input type="radio" name="sort" value="length" checked>Length<br>
             <input type="radio" name="sort" value="gc" >GC<br>
             <input type="radio" name="sort" value="cluster">Cluster<br>
+        </form>
+        <form id="sortdir">
+            <input type="radio" name="sortdir" value="1">Ascending<br>
+            <input type="radio" name="sortdir" value="-1" checked>Descending<br>
         </form>
         <div id="assembly_plot"></div>
     </div>
@@ -82,22 +86,17 @@ var contig_alignments = {{ contig_alignments }};
 var ploidys = {{ ploidys }};
 
 sortfuncs = {
-    'length' : function(a,b) {
-        if (a.included && !b.included) return -1;
-        if (b.included && !a.included) return 1;
-        return a.length - b.length;
-    },
-    'gc' : function(a,b) {
-        if (a.included && !b.included) return -1;
-        if (b.included && !a.included) return 1;
-        return a.gc - b.gc;
-    },
-    'cluster' : function(a,b) {
-        if (a.included && !b.included) return -1;
-        if (b.included && !a.included) return 1;
-        return a.cluster - b.cluster;
-    }
+    'length'  : function(a,b) { return a.length - b.length; },
+    'gc'      : function(a,b) { return a.gc - b.gc; },
+    'cluster' : function(a,b) { return a.cluster - b.cluster; }
 }
+
+sortstub = function(a, b, sortvar, sortdir=1) {
+    if (a.included && !b.included) return -1;
+    if (b.included && !a.included) return 1;
+    return sortfuncs[sortvar](a,b) * sortdir
+}
+
 
 
 var contig_names = {};
@@ -108,15 +107,17 @@ contigs.forEach(function(contig) {
     contig_short_long[contig.name] = contig.longname;
 })
 
-function sort_contigs (sortfunc, contigs, contig_positions) {
-    contigs.sort(sortfunc);
+function sort_contigs (contigs, contig_positions) {
+    sortvar = d3.selectAll("input[name='sort']:checked").node().value
+    sortdir = d3.selectAll("input[name='sortdir']:checked").node().value
+    contigs.sort(function(a,b) { return sortstub(a,b,sortvar,sortdir) });
     for (var i = 0; i < contigs.length; i++) {
         contig_positions[contigs[i].name] = i;
     }
 }
 
 var contig_positions = {};
-sort_contigs(sortfuncs['length'], contigs, contig_positions)
+sort_contigs(contigs, contig_positions)
 
 ploidy_depths = [ {name:'haploid',    depth: median_depth * 0.5}, 
                   {name:'diploid',    depth: median_depth      }, 
@@ -284,6 +285,7 @@ function build_contig(contig, dim, assembly_dim, windowsize) {
             contig_id = contig_positions[toggle.attr("contig")]
             contigs[contig_id].included = !contigs[contig_id].included
             toggle.attr("fill", contigs[contig_id].included ?  "black" : "grey")
+            reorder_assembly()
         })
 }
 
@@ -424,8 +426,8 @@ var contig_groups = assembly_svg.selectAll("g.contig")
 
 select_contig(selected_contig, assembly_svg, dim, assembly_dim);
 
-function reorder_assembly (sortfunc) {
-    sort_contigs(sortfuncs[sortfunc], contigs, contig_positions)
+function reorder_assembly () {
+    sort_contigs(contigs, contig_positions)
     assembly_dim.yscale.domain(contigs.map(d => d.name))
     
     t = d3.transition().duration(1000).ease(d3.easeCubic);
@@ -440,9 +442,9 @@ function reorder_assembly (sortfunc) {
         .attr("cy", function(d) { return assembly_dim.yscale(d3.select(this).attr("contig")) + assembly_dim.yscale.bandwidth()/2; })
 }
 
-d3.selectAll("input[name='sort']").on("change", function() {reorder_assembly(this.value)})
+d3.selectAll("input[name='sort'], input[name='sortdir']").on("change", function() {reorder_assembly()})
 
-$('#export').on('click', function () {
+$('#export').click(function () {
     contigs.forEach(function(c) {console.log(c.name);})
 })
 
