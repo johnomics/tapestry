@@ -301,7 +301,7 @@ function build_contig(contig, dim, assembly_dim, windowsize) {
             // either window size or the remainder at the end of the contig; subtract the left contig overhang up to position 0
             return dim.xscale(d3.min([windowsize, contig.attr("length") - i*(windowsize/2)])) - dim.xscale(0);
         })
-        .attr("fill", function(d) { return assembly_dim.ploidyscale(d/5); })
+        .attr("fill", function(d) { return assembly_dim.ploidyscale((1+d*0.8)/5); })
         .attr("stroke-opacity", 0);
 
     contig.append("circle")
@@ -485,7 +485,7 @@ reads_svg.selectAll("line.ploidy")
    .attr("x2", dim.xscale.range()[1])
    .attr("y1", function(d) { return reads_dim.yscale(d.depth) })
    .attr("y2", function(d) { return reads_dim.yscale(d.depth) })
-   .style("stroke", function(d, i) { return assembly_dim.ploidyscale(i/5) })
+   .style("stroke", function(d, i) { return assembly_dim.ploidyscale((1+i*0.8)/5); })
    .style("stroke-width", 2)
 
 reads_svg.selectAll("text.ploidy")
@@ -494,7 +494,7 @@ reads_svg.selectAll("text.ploidy")
    .append("text")
    .attr("x", dim.xscale.range()[1] + 10 )
    .attr("y", function(d) { return reads_dim.yscale(d.depth)+2 })
-   .style("fill", function(d, i) { return assembly_dim.ploidyscale(i/5) })
+   .style("fill", function(d, i) { return assembly_dim.ploidyscale((1+i*0.8)/5) })
    .style("text-anchor", "start")
    .text(function(d) { return d.name })
 
