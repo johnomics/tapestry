@@ -71,7 +71,7 @@ class Contig:
             'longname' : self.name,
             'name': self.name.split('_')[-1], # Remove assembly name
             'length': len(self),
-            'gc': self.gc,
+            'gc': f"{self.gc:.2f}",
             'tel_start': self.tel_start,
             'tel_end': self.tel_end
         }
