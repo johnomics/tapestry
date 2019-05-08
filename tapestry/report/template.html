@@ -85,6 +85,30 @@ var read_alignments = {{ read_alignments }};
 var contig_alignments = {{ contig_alignments }};
 var ploidys = {{ ploidys }};
 
+var current_aligned_contig = '';
+
+var contig_names = {};
+var contig_short_long = {};
+var contig_id_short = {};
+contigs.forEach(function(contig) {
+    contig.included = true
+    contig_names[contig.longname] = contig.name;
+    contig_short_long[contig.name] = contig.longname;
+    contig_id_short[contig.id] = contig.name;
+})
+
+var contig_links = {};
+for (var contig_name_long in contig_alignments) {
+    contig_name_short = contig_names[contig_name_long];
+    contig_links[contig_name_short] = [];
+    contig_matches = [...new Set(contig_alignments[contig_name_long].map(d => contig_id_short[d[3]]))]
+    contig_matches.forEach(function(contig_match) {
+        if (contig_name_short != contig_match) {
+            contig_links[contig_name_short].push({source: {"x":-1, "y": contig_name_short}, target: {"x":0, "y": contig_match}});
+        }
+    })
+}
+
 sortfuncs = {
     'length'  : function(a,b) { return a.length - b.length; },
     'gc'      : function(a,b) { return a.gc - b.gc; },
@@ -96,16 +120,6 @@ sortstub = function(a, b, sortvar, sortdir=1) {
     if (b.included && !a.included) return 1;
     return sortfuncs[sortvar](a,b) * sortdir
 }
-
-
-
-var contig_names = {};
-var contig_short_long = {};
-contigs.forEach(function(contig) {
-    contig.included = true
-    contig_names[contig.longname] = contig.name;
-    contig_short_long[contig.name] = contig.longname;
-})
 
 function sort_contigs (contigs, contig_positions) {
     sortvar = d3.selectAll("input[name='sort']:checked").node().value
@@ -140,7 +154,6 @@ function check_min(min_val, list, i) {
     }
     return min_val;
 }
-
 
 function mq_opacity(mq) { return mq/60 }
 
@@ -239,7 +252,7 @@ function plot_alignments(contig, dim, assembly_dim, reads_dim, reads_svg) {
     plot_contig_alignments(contig_alignments[contig], dim);
 }
 
-function reorder_assembly (contigs, contig_positions, assembly_dim, assembly_svg, stats_svg) {
+function reorder_assembly(contigs, contig_positions, assembly_dim, assembly_svg, stats_svg) {
     sort_contigs(contigs, contig_positions);
     assembly_dim.yscale.domain(contigs.map(d => d.name));
 
@@ -256,6 +269,18 @@ function reorder_assembly (contigs, contig_positions, assembly_dim, assembly_svg
     assembly_svg.selectAll("circle")
         .transition(t)
         .attr("cy", function(d) { return assembly_dim.yscale(d3.select(this).attr("contig")) + assembly_dim.yscale.bandwidth()/2; });
+
+    assembly_svg.selectAll("path.contig_link")
+        .transition(t)
+        .attr("d", d3.linkHorizontal()
+                     .x(function(d) { return d.x == -1 ? 0 : dim.xscale(d.x); })
+                     .y(function(d) { return assembly_dim.yscale(d.y) + assembly_dim.yscale.bandwidth()/2; })
+        );
+
+    assembly_svg.selectAll("line.contig_alignment")
+        .transition(t)
+        .attr("y1", function(d) { return assembly_dim.yscale(d3.select(this).attr("contig")) + assembly_dim.yscale.bandwidth(); })
+        .attr("y2", function(d) { return assembly_dim.yscale(d3.select(this).attr("contig")) + assembly_dim.yscale.bandwidth(); })
 
     stats_svg.selectAll("circle")
         .transition(t)
@@ -284,6 +309,43 @@ function select_contig(selected_contig, stats_svg, dim, assembly_dim) {
 function contig_click(contig) {
     select_contig(contig, stats_svg, dim, assembly_dim);
     plot_alignments(contig, dim, assembly_dim, reads_dim, reads_svg);
+}
+
+function show_contig_alignments(contig, assembly_svg) {
+    console.log(contig);
+
+    assembly_svg.selectAll("path.contig_link").remove();
+    assembly_svg.selectAll("line.contig_alignment").remove();
+
+    if (contig == current_aligned_contig) {
+        current_aligned_contig = '';
+        return;
+    }
+
+    current_aligned_contig = contig;
+    
+    var cl = assembly_svg.selectAll("path.contig_link")
+        .data(contig_links[contig])
+        .enter()
+        .append("path")
+        .attr("class", "contig_link")
+        .attr("d", d3.linkHorizontal()
+                    .x(function(d) { return d.x == -1 ? 0 : dim.xscale(d.x); })
+                    .y(function(d) { return assembly_dim.yscale(d.y) + assembly_dim.yscale.bandwidth()/2; })
+        )
+        .style("stroke", "purple");
+
+    var ca = assembly_svg.selectAll("line.contig_alignment")
+        .data(contig_alignments[contig_short_long[contig]])
+        .enter()
+        .append("line")
+        .attr("class", "contig_alignment")
+        .attr("contig", contig)
+        .attr("x1", function(d) { return dim.xscale(d[0]); })
+        .attr("x2", function(d) { return dim.xscale(d[1]); })
+        .attr("y1", function(d) { return assembly_dim.yscale(contig) + assembly_dim.yscale.bandwidth(); })
+        .attr("y2", function(d) { return assembly_dim.yscale(contig) + assembly_dim.yscale.bandwidth(); })
+        .style("stroke", "blue");
 }
 
 function build_contig(contig, dim, assembly_dim, windowsize) {
@@ -426,7 +488,7 @@ var assembly_svg = d3.select("#assembly_plot")
 
 assembly_svg
     .selectAll(".tick")
-    .on("click", function(d) { contig_click(contig_short_long[d]); })
+    .on("click", function(d) { show_contig_alignments(d, assembly_svg); })
 
 var stats_svg = d3.select("#assembly_plot")
                 .append("svg")
