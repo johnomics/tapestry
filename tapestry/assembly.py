@@ -277,12 +277,12 @@ class Assembly(AssemblyPlot):
         env = Environment(loader=FileSystemLoader(report_folder))
         env.globals['include_file'] = include_file
         template = env.get_template('template.html')
-        
-        # Replace contig names in alignments with IDs, for report size and consistency, ignoring full contig alignment
+
+        # Replace contig names in alignments with IDs, for report size and consistency
         contig_alignments = {c:self.contigs[c].contig_alignments_json() for c in self.contigs}
         for c in contig_alignments:
             contig_alignments[c] = [(b, e, r, self.contigs[c].id) for b, e, r, c in contig_alignments[c] if c in self.contigs]
-            
+
         with open(f"{self.outdir}/tapestry_report.html", 'wt') as html_report:
             print(template.render(
                     windowsize = self.windowsize,
