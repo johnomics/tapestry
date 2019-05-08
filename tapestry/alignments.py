@@ -77,7 +77,6 @@ class Alignments():
                 Column('reversed', Boolean),
                 Column('ref_start', Integer),
                 Column('ref_end', Integer),
-                Column('ref_length', Integer),
                 Column('query_start', Integer),
                 Column('query_end', Integer),
                 Column('aligned_length', Integer),
@@ -139,7 +138,10 @@ class Alignments():
             query_length, aligned_length = self.get_alignment_lengths(aln, alntype)
 
             query_start, query_end, left_clip, right_clip = self.get_query_ends(aln, alntype, query_length)
-        
+            
+            if query_type is 'contig' and aln.query_name == aln.reference_name:
+                continue
+
             if query_type is 'read' and aln.query_name not in read_names:
                 read_names[aln.query_name] = True
                 reads_chunk.append({'name':aln.query_name, 'length':query_length})
@@ -153,13 +155,30 @@ class Alignments():
                 'reversed':aln.is_reverse,
                 'ref_start': aln.reference_start + 1, # BAM is 0-based
                 'ref_end': aln.reference_end,
-                'ref_length': aln.reference_length,
                 'query_start': query_start,
                 'query_end': query_end,
                 'left_clip': left_clip,
                 'right_clip': right_clip,
                 'aligned_length': aligned_length
             })
+
+            if query_type is 'contig' and alntype is not 'unmapped':
+                # Insert contig alignment in the other direction
+                alignment_chunk.append({
+                    'query':aln.reference_name,
+                    'querytype':query_type,
+                    'alntype':alntype,
+                    'contig':aln.query_name,
+                    'mq':aln.mapping_quality,
+                    'reversed':aln.is_reverse,
+                    'ref_start': query_start,
+                    'ref_end': query_end,
+                    'query_start': aln.reference_start + 1, # BAM is 0-based
+                    'query_end': aln.reference_end,
+                    'left_clip': None,
+                    'right_clip': None,
+                    'aligned_length': None
+                })
 
             alncount += 1
             if alncount == 1000:
@@ -218,7 +237,9 @@ class Alignments():
         stmt = (select([
                     self.alignments.c.ref_start,
                     self.alignments.c.ref_end,
-                    self.alignments.c.query
+                    self.alignments.c.query,
+                    self.alignments.c.query_start,
+                    self.alignments.c.query_end,
                 ])
                 .where(and_(
                     self.alignments.c.querytype == 'contig',

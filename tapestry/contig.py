@@ -107,7 +107,8 @@ class Contig:
                 assigned_row = len(plot_row_ends)
                 plot_row_ends.append(a.end)
 
-            alignments.append((a.begin, a.end, assigned_row+1, a.data))
+            contig, contig_start, contig_end = a.data
+            alignments.append((a.begin, a.end, assigned_row+1, contig, contig_start, contig_end))
 
         return alignments
 
@@ -219,9 +220,9 @@ class Contig:
 
     def get_contig_alignments(self):
         alignments = IntervalTree()
-        alignments[1:len(self)] = 1
-        for start, end, contig in self.alignments.contig_alignments(self.name):
-            alignments[start:end+1] = contig
+        alignments[1:len(self)] = (self.name, 1, len(self))
+        for self_start, self_end, contig, contig_start, contig_end in self.alignments.contig_alignments(self.name):
+            alignments[self_start:self_end+1] = (contig, contig_start, contig_end)
         return alignments
 
 

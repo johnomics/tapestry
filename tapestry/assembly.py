@@ -281,7 +281,7 @@ class Assembly(AssemblyPlot):
         # Replace contig names in alignments with IDs, for report size and consistency
         contig_alignments = {c:self.contigs[c].contig_alignments_json() for c in self.contigs}
         for c in contig_alignments:
-            contig_alignments[c] = [(b, e, r, self.contigs[c].id) for b, e, r, c in contig_alignments[c] if c in self.contigs]
+            contig_alignments[c] = [(b, e, r, self.contigs[cn].id, cs, ce) for b, e, r, cn, cs, ce in contig_alignments[c] if c in self.contigs and cn != c]
 
         with open(f"{self.outdir}/tapestry_report.html", 'wt') as html_report:
             print(template.render(
