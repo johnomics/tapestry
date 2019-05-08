@@ -72,6 +72,7 @@ class Contig:
             'name': self.name.split('_')[-1], # Remove assembly name
             'length': len(self),
             'gc': f"{self.gc:.2f}",
+            'median_read_depth': f"{self.median_read_depth:.1f}",
             'tel_start': self.tel_start,
             'tel_end': self.tel_end
         }

@@ -41,9 +41,11 @@
     <div id="assembly">
         <h2 id="assembly">Assembly</h2>
         <form id="sortvar">
+            <label class="radio-inline"><input type="radio" name="sort" value="name">Name</label>
             <label class="radio-inline"><input type="radio" name="sort" value="length" checked>Length</label>
-            <label class="radio-inline"><input type="radio" name="sort" value="gc" >GC</label>
+            <label class="radio-inline"><input type="radio" name="sort" value="gc">GC</label>
             <label class="radio-inline"><input type="radio" name="sort" value="cluster">Cluster</label>
+            <label class="radio-inline"><input type="radio" name="sort" value="median_read_depth">Read Depth</label>
         </form>
         <form id="sortdir">
             <label class="radio-inline"><input type="radio" name="sortdir" value="1">Ascending</label>
@@ -110,9 +112,11 @@ for (var contig_name_long in contig_alignments) {
 }
 
 sortfuncs = {
-    'length'  : function(a,b) { return a.length - b.length; },
-    'gc'      : function(a,b) { return a.gc - b.gc; },
-    'cluster' : function(a,b) { return a.cluster - b.cluster; }
+    'name'              : function(a,b) { return (''+a.name).localeCompare(b.name); },
+    'length'            : function(a,b) { return a.length - b.length; },
+    'gc'                : function(a,b) { return a.gc - b.gc; },
+    'median_read_depth' : function(a,b) { return a.median_read_depth - b.median_read_depth; },
+    'cluster'           : function(a,b) { return a.cluster - b.cluster; }
 }
 
 sortstub = function(a, b, sortvar, sortdir=1) {
@@ -121,7 +125,7 @@ sortstub = function(a, b, sortvar, sortdir=1) {
     return sortfuncs[sortvar](a,b) * sortdir
 }
 
-function sort_contigs (contigs, contig_positions) {
+function sort_contigs(contigs, contig_positions) {
     sortvar = d3.selectAll("input[name='sort']:checked").node().value
     sortdir = d3.selectAll("input[name='sortdir']:checked").node().value
     contigs.sort(function(a,b) { return sortstub(a,b,sortvar,sortdir) });
@@ -416,7 +420,7 @@ function build_stats(contig, contigs, contig_positions, dim, assembly_dim) {
     // Cluster
     contig.append("text")
     .attr("contig", contig.attr("name"))
-    .attr("x", 60 )
+    .attr("x", 60)
     .attr("y", function(d) { return ypos(d); })
     .style("fill", function(d) { return assembly_dim.clusterscale(d.cluster); })
     .style("text-anchor", "start")
@@ -428,14 +432,26 @@ function build_stats(contig, contigs, contig_positions, dim, assembly_dim) {
     // GC content
     contig.append("text")
     .attr("contig", contig.attr("name"))
-    .attr("x", 80 )
+    .attr("x", 125)
     .attr("y", function(d) { return ypos(d); })
     .style("fill", function(d) { return assembly_dim.gcscale(d.gc/100); })
-    .style("text-anchor", "start")
+    .style("text-anchor", "end")
     .style("alignment-baseline", "middle")
     .style("font-size", "10pt")
     .style("font-family", "monospace")
     .text(function(d) { return d.gc });
+    
+    // Read depth
+    contig.append("text")
+    .attr("contig", contig.attr("name"))
+    .attr("x", 175)
+    .attr("y", function(d) { return ypos(d); })
+    .style("fill", "black")
+    .style("text-anchor", "end")
+    .style("alignment-baseline", "middle")
+    .style("font-size", "10pt")
+    .style("font-family", "monospace")
+    .text(function(d) { return d.median_read_depth });
 }
 
 var max_read_depth = 0;
@@ -491,16 +507,17 @@ assembly_svg
 
 var stats_svg = d3.select("#assembly_plot")
                 .append("svg")
-                .attr("width", 100 + dim.margin.right)
+                .attr("width", 300 + dim.margin.right)
                 .attr("height", assembly_dim.height + dim.margin.top + dim.margin.bottom)
                 .append("g")
                 .attr("transform", "translate(0," + dim.margin.top + ")")
 
+            
 stats_svg.selectAll("text")
-    .data(["Selected", "Included", "Cluster", "GC"])
+    .data(["Selected", "Included", "Cluster", "GC", "Read Depth"])
     .enter()
     .append("text")
-    .attr("transform", function(d, i) { return "translate(" + (((i+1) * 20) + 5) + ",0) rotate(-55)"; })
+    .attr("transform", function(d, i) { return "translate(" + [25, 45, 65, 95, 140][i] + ",0) rotate(-55)"; })
     .attr("fill", "black")
     .style("text-anchor", "start")
     .style("font-size", "10pt")
