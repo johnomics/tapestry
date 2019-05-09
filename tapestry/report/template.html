@@ -73,6 +73,7 @@
               <th data-field="length" data-sortable="true">Length (bp)</th>
               <th data-field="gc" data-sortable="true">GC Content (%)</th>
               <th data-field="median_read_depth" data-sortable="true">Median Read Depth</th>
+              <th data-field="notes" data-sortable="true" data-editable="true">Notes</th>
             </tr>
           </thead>
         </table>
@@ -110,7 +111,8 @@ var contig_names = {};
 var contig_short_long = {};
 var contig_id_short = {};
 contigs.forEach(function(contig) {
-    contig.included = true
+    contig.included = true;
+    contig.notes = '';
     contig_names[contig.longname] = contig.name;
     contig_short_long[contig.name] = contig.longname;
     contig_id_short[contig.id] = contig.name;
