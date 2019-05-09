@@ -50,18 +50,6 @@
 
     <div id="assembly_section">
         <h2 id="assembly">Assembly</h2>
-        <form id="sortvar">
-            <label class="radio-inline"><input type="radio" name="sort" value="name">Name</label>
-            <label class="radio-inline"><input type="radio" name="sort" value="length" checked>Length</label>
-            <label class="radio-inline"><input type="radio" name="sort" value="gc">GC</label>
-            <label class="radio-inline"><input type="radio" name="sort" value="cluster">Cluster</label>
-            <label class="radio-inline"><input type="radio" name="sort" value="median_read_depth">Read Depth</label>
-        </form>
-        <form id="sortdir">
-            <label class="radio-inline"><input type="radio" name="sortdir" value="1">Ascending</label>
-            <label class="radio-inline"><input type="radio" name="sortdir" value="-1" checked>Descending</label>
-        </form>
-        <button type="button" id="export" class="btn btn-primary">Export contigs</button>
 
         <div id="assembly_plot"></div>
 
@@ -69,6 +57,7 @@
           <thead>
             <tr>
               <th data-field="cluster" data-sortable="true" data-editable="true">Cluster</th>
+              <th data-field="included" data-sortable="true" data-formatter="include_checkbox">Included</th>
               <th data-field="name" data-sortable="true">Contig</th>
               <th data-field="length" data-sortable="true">Length (bp)</th>
               <th data-field="gc" data-sortable="true">GC Content (%)</th>
@@ -111,7 +100,7 @@ var contig_names = {};
 var contig_short_long = {};
 var contig_id_short = {};
 contigs.forEach(function(contig) {
-    contig.included = true;
+    contig.included = 1;
     contig.notes = '';
     contig_names[contig.longname] = contig.name;
     contig_short_long[contig.name] = contig.longname;
@@ -129,32 +118,6 @@ for (var contig_name_long in contig_alignments) {
         }
     })
 }
-
-sortfuncs = {
-    'name'              : function(a,b) { return (''+a.name).localeCompare(b.name); },
-    'length'            : function(a,b) { return a.length - b.length; },
-    'gc'                : function(a,b) { return a.gc - b.gc; },
-    'median_read_depth' : function(a,b) { return a.median_read_depth - b.median_read_depth; },
-    'cluster'           : function(a,b) { return a.cluster - b.cluster; }
-}
-
-sortstub = function(a, b, sortvar, sortdir=1) {
-    if (a.included && !b.included) return -1;
-    if (b.included && !a.included) return 1;
-    return sortfuncs[sortvar](a,b) * sortdir
-}
-
-function sort_contigs(contigs, contig_positions) {
-    sortvar = d3.selectAll("input[name='sort']:checked").node().value
-    sortdir = d3.selectAll("input[name='sortdir']:checked").node().value
-    contigs.sort(function(a,b) { return sortstub(a,b,sortvar,sortdir) });
-    for (var i = 0; i < contigs.length; i++) {
-        contig_positions[contigs[i].name] = i;
-    }
-}
-
-var contig_positions = {};
-sort_contigs(contigs, contig_positions);
 
 function get_assembly_length(contigs) {
     return contigs.reduce((a,b) => ({length: a.length + b.length}), {length: 0}).length;
@@ -313,8 +276,7 @@ function plot_alignments(contig, dim, assembly_dim, reads_dim, reads_svg) {
     plot_contig_alignments(contig_alignments[contig], dim);
 }
 
-function reorder_assembly(contigs, contig_positions, assembly_dim, assembly_svg, stats_svg) {
-    sort_contigs(contigs, contig_positions);
+function reorder_assembly(contigs, assembly_dim, assembly_svg, stats_svg) {
     assembly_dim.yscale.domain(contigs.map(d => d.name));
 
     t = d3.transition().duration(1000).ease(d3.easeCubic);
@@ -443,7 +405,7 @@ function build_contig(contig, dim, assembly_dim, windowsize) {
         .attr("fill", "red")
 }
 
-function build_stats(contig, contigs, contig_positions, dim, assembly_dim) {
+function build_stats(contig, contigs, dim, assembly_dim) {
 
     function ypos(d) { return assembly_dim.yscale(d.name) + assembly_dim.yscale.bandwidth()/2; }
 
@@ -456,24 +418,6 @@ function build_stats(contig, contigs, contig_positions, dim, assembly_dim) {
     .attr("fill", "white")
     .attr("stroke", "green")
     .on("click", function(d) { contig_click(d.longname); });
-
-    // Included
-    contig.append("circle")
-    .attr("class", "include")
-    .attr("contig", contig.attr("name"))
-    .attr("cx", 40)
-    .attr("cy", function(d) { return ypos(d); })
-    .attr("r", assembly_dim.yscale.bandwidth())
-    .attr("fill", function(d) { return contigs[contig_positions[d.name]].included ? "black" : "grey"})
-    .on("click", function(d) {
-        include = d3.select(this);
-        sort_contigs(contigs, contig_positions);
-        contig_id = contig_positions[include.attr("contig")];
-        contigs[contig_id].included = !contigs[contig_id].included;
-        include.attr("fill", contigs[contig_id].included ? "black" : "grey");
-        reorder_assembly(contigs, contig_positions, assembly_dim, assembly_svg, stats_svg);
-        $('#table').bootstrapTable("load", calculate_stats(contigs));
-    })
 
     // Cluster
     contig.append("text")
@@ -656,13 +600,9 @@ var stats = stats_svg.selectAll("g.stat")
     .attr("class", "stat")
     .attr("name", function(d) { return d.name })
     .attr("longname", function(d) { return d.longname })
-    .each(function(d) { build_stats(d3.select(this), contigs, contig_positions, dim, assembly_dim); });
+    .each(function(d) { build_stats(d3.select(this), contigs, dim, assembly_dim); });
 
 select_contig(selected_contig, stats_svg, dim, assembly_dim);
-
-d3.selectAll("input[name='sort'], input[name='sortdir']").on("change", function() {
-    reorder_assembly(contigs, contig_positions, assembly_dim, assembly_svg, stats_svg)
-});
 
 
 $('#export').click(function (e) {
@@ -678,6 +618,15 @@ $('#export').click(function (e) {
     document.body.removeChild(element);
 })
 
+function update_assembly() {
+    reorder_assembly(contigs, assembly_dim, assembly_svg, stats_svg);
+    $('#assembly_table').bootstrapTable("load", calculate_stats(contigs));
+}
+
+function include_checkbox(value) {
+    return '<input type="checkbox" ' + (value==true ? ' checked ' : '' ) + '</input>';
+}
+
 $.fn.editable.defaults.mode = 'inline';
 $('#assembly_table').bootstrapTable({data: calculate_stats(contigs)});
 $('#contig_table').bootstrapTable({
@@ -685,7 +634,15 @@ $('#contig_table').bootstrapTable({
     showMultiSort: true,
     showExport: true,
     exportTypes: ['csv'],
-    data: contigs
+    data: contigs,
+    onPostBody: function() { update_assembly() },
+    onClickCell: function(field, value, row, $element) {
+        if (field === 'included') {
+            row.included = value == 1 ? 0 : 1;
+        }
+        $('#contig_table').bootstrapTable('multipleSort');
+        update_assembly();
+    }
 });
 
 </script>
