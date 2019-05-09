@@ -9,8 +9,9 @@
   <title>Tapestry Report</title>
   
   <style type="text/css">
-      {{ include_file('static/bootstrap.min.css') }}
+      {{ include_file('static/litera.epic.css') }}
       {{ include_file('static/bootstrap-table.min.css') }}
+      {{ include_file('static/bootstrap-table-reorder-rows.min.css') }}
   </style>
   <style>
       .xaxislabel { font-size: 12pt; font-weight: bold; }
@@ -80,11 +81,16 @@
 {{ include_file('static/bootstrap-editable.min.js') }}
 {{ include_file('static/FileSaver.min.js') }}
 {{ include_file('static/tableExport.min.js') }}
+{{ include_file('static/jquery.tablednd.min.js') }}
 {{ include_file('static/fontawesome.all.min.js') }}
 {{ include_file('static/bootstrap-table.min.js') }}
 {{ include_file('static/bootstrap-table-export.min.js') }}
 {{ include_file('static/bootstrap-table-editable.min.js') }}
+{{ include_file('static/bootstrap-table-reorder-rows.min.js') }}
+
+// Use hacked version for Bootstrap 4 from https://github.com/wenzhixin/bootstrap-table/issues/4258
 {{ include_file('static/bootstrap-table-multiple-sort.js') }}
+
 {{ include_file('static/d3.min.js') }}
 
 var windowsize = {{ windowsize }};
@@ -632,11 +638,17 @@ $('#assembly_table').bootstrapTable({data: calculate_stats(contigs)});
 $('#contig_table').bootstrapTable({
     editable: true,
     showMultiSort: true,
+    reorderableRows: true,
+    useRowAttrFunc: true,
     sortPriority: [{"sortName":"included","sortOrder":"desc"}, {"sortName":"length","sortOrder":"desc"}],
     showExport: true,
     exportTypes: ['csv'],
     data: contigs,
     onPostBody: function() { update_assembly() },
+    onReorderRow: function(new_order) {
+        contigs = new_order.slice(0);
+        update_assembly();
+    },
     onClickCell: function(field, value, row, $element) {
         if (field === 'included') {
             row.included = value == 1 ? 0 : 1;
