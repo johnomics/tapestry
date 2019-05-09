@@ -34,8 +34,8 @@
       </div>
     </noscript>
 
-    <div id="assembly_table">
-      <table id="table" data-sort-name="cluster" data-sort-order="asc">
+    <div>
+      <table id="assembly_table" data-sort-name="cluster" data-sort-order="asc">
         <thead>
           <tr>
             <th data-field="assembly" data-sortable="true">Contig set</th>
@@ -62,9 +62,21 @@
             <label class="radio-inline"><input type="radio" name="sortdir" value="-1" checked>Descending</label>
         </form>
         <button type="button" id="export" class="btn btn-primary">Export contigs</button>
-        <div id="assembly_plot"></div>
-    </div>
 
+        <div id="assembly_plot"></div>
+
+        <table id="contig_table">
+          <thead>
+            <tr>
+              <th data-field="cluster" data-sortable="true" data-editable="true">Cluster</th>
+              <th data-field="name" data-sortable="true">Contig</th>
+              <th data-field="length" data-sortable="true">Length (bp)</th>
+              <th data-field="gc" data-sortable="true">GC Content (%)</th>
+              <th data-field="median_read_depth" data-sortable="true">Median Read Depth</th>
+            </tr>
+          </thead>
+        </table>
+    </div>
 
     <div id="read_alignment_plot"></div>
 
@@ -75,9 +87,14 @@
 {{ include_file('static/jquery-3.3.1.min.js') }}
 {{ include_file('static/popper.min.js') }}
 {{ include_file('static/bootstrap.min.js') }}
+{{ include_file('static/bootstrap-editable.min.js') }}
+{{ include_file('static/FileSaver.min.js') }}
+{{ include_file('static/tableExport.min.js') }}
+{{ include_file('static/fontawesome.all.min.js') }}
 {{ include_file('static/bootstrap-table.min.js') }}
 {{ include_file('static/bootstrap-table-export.min.js') }}
 {{ include_file('static/bootstrap-table-editable.min.js') }}
+{{ include_file('static/bootstrap-table-multiple-sort.js') }}
 {{ include_file('static/d3.min.js') }}
 
 var windowsize = {{ windowsize }};
@@ -659,7 +676,15 @@ $('#export').click(function (e) {
     document.body.removeChild(element);
 })
 
-$('#table').bootstrapTable({data: calculate_stats(contigs)});
+$.fn.editable.defaults.mode = 'inline';
+$('#assembly_table').bootstrapTable({data: calculate_stats(contigs)});
+$('#contig_table').bootstrapTable({
+    editable: true,
+    showMultiSort: true,
+    showExport: true,
+    exportTypes: ['csv'],
+    data: contigs
+});
 
 </script>
 </body>
