@@ -632,6 +632,7 @@ $('#assembly_table').bootstrapTable({data: calculate_stats(contigs)});
 $('#contig_table').bootstrapTable({
     editable: true,
     showMultiSort: true,
+    sortPriority: [{"sortName":"included","sortOrder":"desc"}, {"sortName":"length","sortOrder":"desc"}],
     showExport: true,
     exportTypes: ['csv'],
     data: contigs,
@@ -644,6 +645,9 @@ $('#contig_table').bootstrapTable({
         update_assembly();
     }
 });
+
+$('#contig_table').bootstrapTable('multipleSort');
+update_assembly();
 
 </script>
 </body>

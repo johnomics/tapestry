@@ -69,7 +69,7 @@ class Contig:
             'id': self.id,
             'cluster': self.cluster,
             'longname' : self.name,
-            'name': self.name.split('_')[-1], # Remove assembly name
+            'name': self.name.replace(f"{self.outdir}_", ''), # Remove assembly name
             'length': len(self),
             'gc': f"{self.gc:.2f}",
             'median_read_depth': f"{self.median_read_depth:.1f}",
