@@ -16,6 +16,8 @@
   <style>
       .xaxislabel { font-size: 12pt; font-weight: bold; }
       .yaxislabel { font-size: 12pt; font-weight: bold; }
+      #assembly_section { display: flex; }
+      
   }
   </style>
 </head>
@@ -50,19 +52,17 @@
     </div>
 
     <div id="assembly_section">
-        <h2 id="assembly">Assembly</h2>
-
         <div id="assembly_plot"></div>
-
         <table id="contig_table">
           <thead>
             <tr>
-              <th data-field="cluster" data-sortable="true" data-editable="true">Cluster</th>
-              <th data-field="included" data-sortable="true" data-formatter="include_checkbox">Included</th>
-              <th data-field="name" data-sortable="true">Contig</th>
-              <th data-field="length" data-sortable="true">Length (bp)</th>
-              <th data-field="gc" data-sortable="true">GC Content (%)</th>
-              <th data-field="median_read_depth" data-sortable="true">Median Read Depth</th>
+              <th data-field="name" data-sortable="true" data-align='left'>Contig</th>
+              <th data-field="included" data-sortable="true" data-formatter="include_checkbox" data-align='center'>Use</th>
+              <th data-field="selected" data-sortable="true" data-radio="true"></th>
+              <th data-field="length" data-sortable="true" data-align='right' data-formatter="length_formatter">Length</th>
+              <th data-field="gc" data-sortable="true" data-align='right'>GC %</th>
+              <th data-field="median_read_depth" data-sortable="true" data-align='right'>Read Depth</th>
+              <th data-field="cluster" data-sortable="true" data-editable="true" data-align='right'>Cluster</th>
               <th data-field="notes" data-sortable="true" data-editable="true">Notes</th>
             </tr>
           </thead>
@@ -142,6 +142,10 @@ function get_n50_stats(contiglist, assembly_length) {
     })
     
     return [n50_number, n50_length];
+}
+
+function length_formatter(value) {
+    return value.toLocaleString();
 }
 
 function calculate_assembly_stats(contigs, label) {
@@ -282,7 +286,7 @@ function plot_alignments(contig, dim, assembly_dim, reads_dim, reads_svg) {
     plot_contig_alignments(contig_alignments[contig], dim);
 }
 
-function reorder_assembly(contigs, assembly_dim, assembly_svg, stats_svg) {
+function reorder_assembly(contigs, assembly_dim, assembly_svg) {
     assembly_dim.yscale.domain(contigs.map(d => d.name));
 
     t = d3.transition().duration(1000).ease(d3.easeCubic);
@@ -310,35 +314,8 @@ function reorder_assembly(contigs, assembly_dim, assembly_svg, stats_svg) {
         .transition(t)
         .attr("y1", function(d) { return assembly_dim.yscale(d3.select(this).attr("contig")) + assembly_dim.yscale.bandwidth(); })
         .attr("y2", function(d) { return assembly_dim.yscale(d3.select(this).attr("contig")) + assembly_dim.yscale.bandwidth(); })
-
-    stats_svg.selectAll("circle")
-        .transition(t)
-        .attr("cy", function(d) { return assembly_dim.yscale(d3.select(this).attr("contig")) + assembly_dim.yscale.bandwidth()/2; });
-
-    stats_svg.selectAll("text")
-        .transition(t)
-        .attr("y", function(d) { return assembly_dim.yscale(d3.select(this).attr("contig")) + assembly_dim.yscale.bandwidth()/2; });
 }
 
-function select_contig(selected_contig, stats_svg, dim, assembly_dim) {
-    var selected = stats_svg.selectAll("circle.selected")
-                    .data(contigs.filter(c => c.longname === selected_contig), function(d) { return d.longname })
-    selected.enter()
-        .append("circle")
-        .attr("class", "selected")
-        .attr("contig", contig_names[selected_contig])
-        .attr("cx", 20)
-        .attr("cy", function(d) { return assembly_dim.yscale(d.name) + assembly_dim.yscale.bandwidth()/2; })
-        .attr("r", assembly_dim.yscale.bandwidth())
-        .attr("fill", "green");
-
-    selected.exit().remove();
-}
-
-function contig_click(contig) {
-    select_contig(contig, stats_svg, dim, assembly_dim);
-    plot_alignments(contig, dim, assembly_dim, reads_dim, reads_svg);
-}
 
 function show_contig_alignments(contig, assembly_svg) {
 
@@ -411,57 +388,6 @@ function build_contig(contig, dim, assembly_dim, windowsize) {
         .attr("fill", "red")
 }
 
-function build_stats(contig, contigs, dim, assembly_dim) {
-
-    function ypos(d) { return assembly_dim.yscale(d.name) + assembly_dim.yscale.bandwidth()/2; }
-
-    // Selected
-    contig.append("circle")
-    .attr("contig", contig.attr("name"))
-    .attr("cx", 20)
-    .attr("cy", function(d) { return ypos(d); })
-    .attr("r", assembly_dim.yscale.bandwidth())
-    .attr("fill", "white")
-    .attr("stroke", "green")
-    .on("click", function(d) { contig_click(d.longname); });
-
-    // Cluster
-    contig.append("text")
-    .attr("contig", contig.attr("name"))
-    .attr("x", 60)
-    .attr("y", function(d) { return ypos(d); })
-    .style("fill", function(d) { return assembly_dim.clusterscale(d.cluster); })
-    .style("text-anchor", "start")
-    .style("alignment-baseline", "middle")
-    .style("font-size", "10pt")
-    .style("font-family", "monospace")
-    .text(function(d) { return d.cluster });
-
-    // GC content
-    contig.append("text")
-    .attr("contig", contig.attr("name"))
-    .attr("x", 125)
-    .attr("y", function(d) { return ypos(d); })
-    .style("fill", function(d) { return assembly_dim.gcscale(d.gc/100); })
-    .style("text-anchor", "end")
-    .style("alignment-baseline", "middle")
-    .style("font-size", "10pt")
-    .style("font-family", "monospace")
-    .text(function(d) { return d.gc });
-    
-    // Read depth
-    contig.append("text")
-    .attr("contig", contig.attr("name"))
-    .attr("x", 175)
-    .attr("y", function(d) { return ypos(d); })
-    .style("fill", "black")
-    .style("text-anchor", "end")
-    .style("alignment-baseline", "middle")
-    .style("font-size", "10pt")
-    .style("font-family", "monospace")
-    .text(function(d) { return d.median_read_depth });
-}
-
 var max_read_depth = 0;
 var min_read_pos = 0;
 var max_read_pos = 0;
@@ -512,25 +438,6 @@ var assembly_svg = d3.select("#assembly_plot")
 assembly_svg
     .selectAll(".tick")
     .on("click", function(d) { show_contig_alignments(d, assembly_svg); })
-
-var stats_svg = d3.select("#assembly_plot")
-                .append("svg")
-                .attr("width", 300 + dim.margin.right)
-                .attr("height", assembly_dim.height + dim.margin.top + dim.margin.bottom)
-                .append("g")
-                .attr("transform", "translate(0," + dim.margin.top + ")")
-
-            
-stats_svg.selectAll("text")
-    .data(["Selected", "Included", "Cluster", "GC", "Read Depth"])
-    .enter()
-    .append("text")
-    .attr("transform", function(d, i) { return "translate(" + [25, 45, 65, 95, 140][i] + ",0) rotate(-55)"; })
-    .attr("fill", "black")
-    .style("text-anchor", "start")
-    .style("font-size", "10pt")
-    .text(function(d) { return d; });
-
 
 var reads_dim = { height: 400 };
 
@@ -596,19 +503,8 @@ var contig_groups = assembly_svg.selectAll("g.contig")
     .attr("name", function(d) { return d.name })
     .attr("longname", function(d) { return d.longname })
     .attr("length", function(d) { return d.length })
-    .on("click", function(d) { contig_click(d.longname); })
     .each(function(d) { build_contig(d3.select(this), dim, assembly_dim, windowsize); });
 
-var stats = stats_svg.selectAll("g.stat")
-    .data(contigs, function(d) { return d.name })
-    .enter()
-    .append("g")
-    .attr("class", "stat")
-    .attr("name", function(d) { return d.name })
-    .attr("longname", function(d) { return d.longname })
-    .each(function(d) { build_stats(d3.select(this), contigs, dim, assembly_dim); });
-
-select_contig(selected_contig, stats_svg, dim, assembly_dim);
 
 
 $('#export').click(function (e) {
@@ -625,7 +521,7 @@ $('#export').click(function (e) {
 })
 
 function update_assembly() {
-    reorder_assembly(contigs, assembly_dim, assembly_svg, stats_svg);
+    reorder_assembly(contigs, assembly_dim, assembly_svg);
     $('#assembly_table').bootstrapTable("load", calculate_stats(contigs));
 }
 
@@ -637,6 +533,7 @@ $.fn.editable.defaults.mode = 'inline';
 $('#assembly_table').bootstrapTable({data: calculate_stats(contigs)});
 $('#contig_table').bootstrapTable({
     editable: true,
+    showColumns: true,
     showMultiSort: true,
     reorderableRows: true,
     useRowAttrFunc: true,
@@ -648,6 +545,9 @@ $('#contig_table').bootstrapTable({
     onReorderRow: function(new_order) {
         contigs = new_order.slice(0);
         update_assembly();
+    },
+    onCheck: function(row) {
+        plot_alignments(row.longname, dim, assembly_dim, reads_dim, reads_svg);
     },
     onClickCell: function(field, value, row, $element) {
         if (field === 'included') {
