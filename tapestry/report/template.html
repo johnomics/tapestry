@@ -14,10 +14,16 @@
       {{ include_file('static/bootstrap-table-reorder-rows.min.css') }}
   </style>
   <style>
-      .xaxislabel { font-size: 12pt; font-weight: bold; }
-      .yaxislabel { font-size: 12pt; font-weight: bold; }
-      #assembly_section { display: flex; }
-      
+      html {
+          font-size: 14px;
+      }
+      #assembly_section { 
+          display: flex; 
+      }
+      .xaxis { font-size: 14px; }
+      .yaxis { font-size: 14px; }
+      .xaxislabel { font-size: 16px; font-weight: bold; }
+      .yaxislabel { font-size: 16px; font-weight: bold; }
   }
   </style>
 </head>
@@ -399,24 +405,27 @@ for (var key in read_alignments) {
 }
 
 var max_cluster = d3.max(contigs.map(c => c.cluster))
-
-var dim = { margin: {top: 100, right: 80, bottom: 50, left: 80} };
+var max_contig_name_length = d3.max(contigs.map(c => c.name.length))
+var dim = { margin: {top: 100, right: 80, bottom: 25, left: max_contig_name_length * 10 } };
 
 dim.width = 1000 - dim.margin.left - dim.margin.right;
 
+// Pad X axis with 2% of the maximum length, for contig alignment curves
+var leftpad = (max_read_pos-min_read_pos) * 0.02
 dim.xscale = d3.scaleLinear()
-               .domain([min_read_pos-1000, max_read_pos]) // -1000 to give axis some space
+               .domain([min_read_pos-leftpad, max_read_pos])
                .range([0, dim.width]);
 
-xaxis = d3.axisBottom(dim.xscale);
+var xaxis = d3.axisBottom(dim.xscale);
 
 
-var assembly_dim = {height: contigs.length * 20};
+var assembly_dim = {height: contigs.length * 29};
 
 assembly_dim.yscale = d3.scaleBand()
                       .domain(contigs.map(d => d.name))
                       .rangeRound([0, assembly_dim.height])
-                      .padding(0.8);
+                      .paddingInner(0.8)
+                      .paddingOuter(0.4);
 
 assembly_dim.ploidyscale = d3.scaleSequential(d3.interpolateGreens);
 assembly_dim.gcscale = d3.scaleSequential(d3.interpolateRainbow);
@@ -439,7 +448,18 @@ assembly_svg
     .selectAll(".tick")
     .on("click", function(d) { show_contig_alignments(d, assembly_svg); })
 
-var reads_dim = { height: 400 };
+var contig_groups = assembly_svg.selectAll("g.contig")
+    .data(contigs, function(d) { return d.name })
+    .enter()
+    .append("g")
+    .attr("class", "contig")
+    .attr("name", function(d) { return d.name })
+    .attr("longname", function(d) { return d.longname })
+    .attr("length", function(d) { return d.length })
+    .each(function(d) { build_contig(d3.select(this), dim, assembly_dim, windowsize); });
+
+
+var reads_dim = { height: 300 };
 
 reads_dim.yscale = d3.scaleLinear()
                      .domain([0, max_read_depth])
@@ -491,30 +511,6 @@ reads_svg.selectAll("text.ploidy")
    .style("text-anchor", "start")
    .text(function(d) { return d.name })
 
-var contig_groups = assembly_svg.selectAll("g.contig")
-    .data(contigs, function(d) { return d.name })
-    .enter()
-    .append("g")
-    .attr("class", "contig")
-    .attr("name", function(d) { return d.name })
-    .attr("longname", function(d) { return d.longname })
-    .attr("length", function(d) { return d.length })
-    .each(function(d) { build_contig(d3.select(this), dim, assembly_dim, windowsize); });
-
-
-
-$('#export').click(function (e) {
-    var text = contigs.filter(c => c.included).map(c => c.name).join('\n');
-    var filename = "filtered_assembly.txt";
-
-    var element = document.createElement('a');
-    element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
-    element.setAttribute('download', filename);
-    element.style.display = 'none';
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
-})
 
 function update_assembly(sort=false) {
     if (sort) {
