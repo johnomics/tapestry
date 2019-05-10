@@ -56,13 +56,13 @@
         <table id="contig_table">
           <thead>
             <tr>
+              <th data-radio="true"></th>
               <th data-field="name" data-sortable="true" data-align='left'>Contig</th>
-              <th data-field="included" data-sortable="true" data-formatter="include_checkbox" data-align='center'>Use</th>
-              <th data-field="selected" data-sortable="true" data-radio="true"></th>
               <th data-field="length" data-sortable="true" data-align='right' data-formatter="length_formatter">Length</th>
               <th data-field="gc" data-sortable="true" data-align='right'>GC %</th>
               <th data-field="median_read_depth" data-sortable="true" data-align='right'>Read Depth</th>
               <th data-field="cluster" data-sortable="true" data-editable="true" data-align='right'>Cluster</th>
+              <th data-field="included" data-sortable="true" data-formatter="include_checkbox" data-align='center'>Keep</th>
               <th data-field="notes" data-sortable="true" data-editable="true">Notes</th>
             </tr>
           </thead>
@@ -491,10 +491,6 @@ reads_svg.selectAll("text.ploidy")
    .style("text-anchor", "start")
    .text(function(d) { return d.name })
 
-
-var selected_contig = contigs.map(d => d.longname)[0];
-plot_alignments(selected_contig, dim, assembly_dim, reads_dim, reads_svg);
-
 var contig_groups = assembly_svg.selectAll("g.contig")
     .data(contigs, function(d) { return d.name })
     .enter()
@@ -520,7 +516,10 @@ $('#export').click(function (e) {
     document.body.removeChild(element);
 })
 
-function update_assembly() {
+function update_assembly(sort=false) {
+    if (sort) {
+        $('#contig_table').bootstrapTable('multipleSort');
+    }
     reorder_assembly(contigs, assembly_dim, assembly_svg);
     $('#assembly_table').bootstrapTable("load", calculate_stats(contigs));
 }
@@ -552,15 +551,13 @@ $('#contig_table').bootstrapTable({
     onClickCell: function(field, value, row, $element) {
         if (field === 'included') {
             row.included = value == 1 ? 0 : 1;
+            update_assembly(sort=true);
         }
-        $('#contig_table').bootstrapTable('multipleSort');
-        update_assembly();
     }
 });
 
-$('#contig_table').bootstrapTable('multipleSort');
-update_assembly();
-
+update_assembly(sort=true);
+$('#contig_table').bootstrapTable('check', 0);
 </script>
 </body>
 </html>
