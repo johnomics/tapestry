@@ -211,7 +211,7 @@ function plot_read_alignments(alignments, dim, assembly_dim, reads_dim, svg, con
     
     svg.append("text")
        .attr("class", "xaxislabel")
-       .attr("transform", "translate(" + (dim.width/2) + " ," + (reads_dim.height + dim.margin.top + 20) + ")")
+       .attr("transform", "translate(" + (dim.width/2) + " ," + (reads_dim.height + 45) + ")")
        .style("text-anchor", "middle")
        .attr("fill", "black")
        .text(contig + " Position (bp)");
@@ -289,7 +289,7 @@ function plot_contig_alignments(alignments, dim) {
 
 function plot_alignments(contig, dim, assembly_dim, reads_dim, reads_svg) {
     plot_read_alignments(read_alignments[contig], dim, assembly_dim, reads_dim, reads_svg, contig_names[contig]);
-    plot_contig_alignments(contig_alignments[contig], dim);
+//    plot_contig_alignments(contig_alignments[contig], dim);
 }
 
 function reorder_assembly(contigs, assembly_dim, assembly_svg) {
@@ -380,18 +380,18 @@ function build_contig(contig, dim, assembly_dim, windowsize) {
     contig.append("circle")
         .attr("class", "telomere start")
         .attr("cx", dim.xscale(0))
-        .attr("opacity", function(d) {return (d.tel_start > 0) ? 1 : 0});
+        .attr("opacity", function(d) {return d.tel_start / 20; });
     
     contig.append("circle")
         .attr("class", "telomere end")
         .attr("cx", function(d) { return dim.xscale(d.length) })
-        .attr("opacity", function(d) {return (d.tel_end > 0) ? 1 : 0});
+        .attr("opacity", function(d) {return d.tel_end / 20; });
 
     contig.selectAll(".telomere")
         .attr("contig", contig.attr("name"))
         .attr("cy", function(d) { return assembly_dim.yscale(d.name) + assembly_dim.yscale.bandwidth()/2; })
         .attr("r", assembly_dim.yscale.bandwidth())
-        .attr("fill", "red")
+        .attr("fill", "red");
 }
 
 var max_read_depth = 0;
@@ -406,7 +406,7 @@ for (var key in read_alignments) {
 
 var max_cluster = d3.max(contigs.map(c => c.cluster))
 var max_contig_name_length = d3.max(contigs.map(c => c.name.length))
-var dim = { margin: {top: 100, right: 80, bottom: 25, left: max_contig_name_length * 10 } };
+var dim = { margin: {top: 100, right: 80, bottom: 50, left: max_contig_name_length * 10 } };
 
 dim.width = 1000 - dim.margin.left - dim.margin.right;
 
@@ -447,6 +447,14 @@ var assembly_svg = d3.select("#assembly_plot")
 assembly_svg
     .selectAll(".tick")
     .on("click", function(d) { show_contig_alignments(d, assembly_svg); })
+
+assembly_svg.append("text")
+    .attr("class", "xaxislabel")
+    .attr("transform", "translate(" + (dim.width/2) + " ," + (assembly_dim.height + 45) + ")")
+    .style("text-anchor", "middle")
+    .attr("fill", "black")
+    .text("Position (bp)");
+
 
 var contig_groups = assembly_svg.selectAll("g.contig")
     .data(contigs, function(d) { return d.name })
