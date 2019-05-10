@@ -110,8 +110,9 @@ class Assembly(AssemblyPlot):
             contig_id = 0
             for rec in SeqIO.parse(open(self.assemblyfile, 'r'), "fasta"):
                 rec.seq = rec.seq.upper()
+                orig_name = rec.id
                 rec.id = f"{self.outdir}_{rec.id}"
-                contigs[rec.id] = Contig(contig_id, rec, self.telomeres, self.windowsize, self.outdir, self.filenames)
+                contigs[rec.id] = Contig(contig_id, rec, orig_name, self.telomeres, self.windowsize, self.outdir, self.filenames)
                 contig_id += 1
                 if no_assembly_found:
                     SeqIO.write(rec, assembly_out, "fasta")

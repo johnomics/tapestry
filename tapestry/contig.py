@@ -30,9 +30,10 @@ def get_ploidy(contig, median_depth=None):
 
 class Contig:
 
-    def __init__(self, cid, rec, telomeres, windowsize, outdir, filenames):
+    def __init__(self, cid, rec, orig_name, telomeres, windowsize, outdir, filenames):
         self.id = cid
         self.name = rec.id
+        self.orig_name = orig_name
         self.rec = rec
         self.telomeres = telomeres
         self.windowsize = windowsize
@@ -69,7 +70,7 @@ class Contig:
             'id': self.id,
             'cluster': self.cluster,
             'longname' : self.name,
-            'name': self.name.replace(f"{self.outdir}_", ''), # Remove assembly name
+            'name': self.orig_name,
             'length': len(self),
             'gc': f"{self.gc:.2f}",
             'median_read_depth': f"{self.median_read_depth:.1f}",
