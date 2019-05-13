@@ -5,6 +5,7 @@ import networkx as nx
 from multiprocessing import Pool
 from functools import partial
 from statistics import mean, median
+from collections import defaultdict
 from gzip import open as gzopen
 from tqdm import tqdm
 
@@ -284,12 +285,18 @@ class Assembly(AssemblyPlot):
         for c in contig_alignments:
             contig_alignments[c] = [(b, e, r, self.contigs[cn].id, cs, ce) for b, e, r, cn, cs, ce in contig_alignments[c] if c in self.contigs and cn != c]
 
+        contig_coverage = defaultdict(lambda: defaultdict(int))
+        for c1 in self.contigs:
+            for c2 in self.contigs[c1].contig_coverage:
+                contig_coverage[self.contigs[c1].id][self.contigs[c2].id] = self.contigs[c1].contig_coverage[c2]
+
         with open(f"{self.outdir}/tapestry_report.html", 'wt') as html_report:
             print(template.render(
                     windowsize = self.windowsize,
                     contigs = json.dumps([self.contigs[c].json() for c in self.contigs]),
                     read_alignments = json.dumps({c:self.contigs[c].read_alignments for c in self.contigs}),
                     contig_alignments = json.dumps(contig_alignments),
+                    contig_coverage = json.dumps(contig_coverage),
                     ploidys = json.dumps({c:self.contigs[c].ploidys for c in self.contigs}),
                     median_depth = self.median_depth
                  ),

@@ -124,7 +124,7 @@ class Contig:
         self.mean_contig_depth = self.mean_depth(self.contig_depths)
         self.mean_read_depth = self.mean_depth(self.read_depths)
         self.median_read_depth = self.median_depth(self.read_depths)
-        self.contig_alignments = self.get_contig_alignments()
+        self.contig_alignments, self.contig_coverage = self.get_contig_alignments()
         self.mean_start_overhang, self.mean_end_overhang = self.get_read_overhangs()
         self.region_depths = self.get_region_depths()
         self.unique_bases = self.get_unique_bases()
@@ -222,10 +222,18 @@ class Contig:
 
     def get_contig_alignments(self):
         alignments = IntervalTree()
+        alignments_by_contig = defaultdict(IntervalTree)
         alignments[1:len(self)] = (self.name, 1, len(self))
         for self_start, self_end, contig, contig_start, contig_end in self.alignments.contig_alignments(self.name):
             alignments[self_start:self_end+1] = (contig, contig_start, contig_end)
-        return alignments
+            alignments_by_contig[contig][self_start:self_end+1] = 1
+
+        coverage = defaultdict(int)
+        for contig in alignments_by_contig:
+            alignments_by_contig[contig].merge_overlaps()
+            coverage[contig] = sum([i.end-i.begin for i in alignments_by_contig[contig]])
+
+        return alignments, coverage
 
 
     def get_region_depths(self):

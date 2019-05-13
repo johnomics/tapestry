@@ -77,8 +77,6 @@
 
     <div id="read_alignment_plot"></div>
 
-    <div id="contig_alignment_plot"></div>
-
   </div>
 <script type="text/javascript">
 {{ include_file('static/jquery-3.3.1.min.js') }}
@@ -104,6 +102,7 @@ var median_depth = {{ median_depth }};
 var contigs = {{ contigs }};
 var read_alignments = {{ read_alignments }};
 var contig_alignments = {{ contig_alignments }};
+var contig_coverage = {{ contig_coverage }};
 var ploidys = {{ ploidys }};
 
 var current_aligned_contig = '';
@@ -111,12 +110,16 @@ var current_aligned_contig = '';
 var contig_names = {};
 var contig_short_long = {};
 var contig_id_short = {};
+var contig_short_id = {};
+var contig_lengths = {};
 contigs.forEach(function(contig) {
     contig.included = 1;
     contig.notes = '';
     contig_names[contig.longname] = contig.name;
     contig_short_long[contig.name] = contig.longname;
     contig_id_short[contig.id] = contig.name;
+    contig_short_id[contig.name] = contig.id;
+    contig_lengths[contig.id] = contig.length;
 })
 
 var contig_links = {};
@@ -129,6 +132,14 @@ for (var contig_name_long in contig_alignments) {
             contig_links[contig_name_short].push({source: {"x":-1, "y": contig_name_short}, target: {"x":0, "y": contig_match}});
         }
     })
+}
+
+var contig_coverage_prop = {};
+for (var contig_id_1 in contig_coverage) {
+    contig_coverage_prop[contig_id_1] = {};
+    for (var contig_id_2 in contig_coverage[contig_id_1]) {
+        contig_coverage_prop[contig_id_1][contig_id_2] = contig_coverage[contig_id_1][contig_id_2]/contig_lengths[contig_id_1];
+    }
 }
 
 function get_assembly_length(contigs) {
@@ -250,46 +261,8 @@ function plot_read_alignments(alignments, dim, assembly_dim, reads_dim, svg, con
           .style("stroke", "pink");
 }
 
-function plot_contig_alignments(alignments, dim) {
-
-    // contig_alignments:
-    // 0 begin
-    // 1 end
-    // 2 y position
-    // 3 contig name
-
-    var plot_height = d3.max(alignments, function(d) { return d[2]; });
-    var contigs_dim = { height: plot_height * 10 };
-    
-    contigs_dim.yscale = d3.scaleLinear().domain([0, plot_height])
-                                 .range([0, contigs_dim.height]);
-    
-    var plot = d3.select("#contig_alignment_plot");
-
-    plot.selectAll("svg").remove();
-
-    var svg = plot.append("svg")
-                  .attr("width", dim.width + dim.margin.left + dim.margin.right)
-                  .attr("height", contigs_dim.height + dim.margin.top + dim.margin.bottom)
-                  .append("g")
-                  .attr("transform", "translate(" + dim.margin.left + ",0)")
-    
-    var ca = svg.selectAll("line.contig_alignment")
-        .data(alignments)
-        .enter();
-    
-    ca.append("line")
-        .attr("class", "contig_alignment")
-        .attr("x1", function(d) { return dim.xscale(d[0]); })
-        .attr("x2", function(d) { return dim.xscale(d[1]); })
-        .attr("y1", function(d) { return contigs_dim.yscale(d[2]); })
-        .attr("y2", function(d) { return contigs_dim.yscale(d[2]); })
-        .style("stroke", "black");
-}
-
 function plot_alignments(contig, dim, assembly_dim, reads_dim, reads_svg) {
     plot_read_alignments(read_alignments[contig], dim, assembly_dim, reads_dim, reads_svg, contig_names[contig]);
-//    plot_contig_alignments(contig_alignments[contig], dim);
 }
 
 function reorder_assembly(contigs, assembly_dim, assembly_svg) {
@@ -316,17 +289,48 @@ function reorder_assembly(contigs, assembly_dim, assembly_svg) {
                      .y(function(d) { return assembly_dim.yscale(d.y) + assembly_dim.yscale.bandwidth()/2; })
         );
 
-    assembly_svg.selectAll("line.contig_alignment")
+    assembly_svg.selectAll("rect.contig_alignment.self")
         .transition(t)
-        .attr("y1", function(d) { return assembly_dim.yscale(d3.select(this).attr("contig")) + assembly_dim.yscale.bandwidth(); })
-        .attr("y2", function(d) { return assembly_dim.yscale(d3.select(this).attr("contig")) + assembly_dim.yscale.bandwidth(); })
+        .attr("y", function(d) { return assembly_dim.yscale(d3.select(this).attr("contig1")) + assembly_dim.yscale.bandwidth(); });
+
+    assembly_svg.selectAll("rect.contig_alignment.other")
+        .transition(t)
+        .attr("y", function(d) { return assembly_dim.yscale(d3.select(this).attr("contig2")) + assembly_dim.yscale.bandwidth(); });
+
 }
+
+function connect_alignments(d, i) {
+    this_y = assembly_dim.yscale(d3.select(this).attr("contig1")) + assembly_dim.yscale.bandwidth()*1.25;
+    other_y = assembly_dim.yscale(d3.select(this).attr("contig2")) + assembly_dim.yscale.bandwidth()*1.25;
+
+    poly = [{"x":dim.xscale(d[0]), "y":this_y },
+            {"x":dim.xscale(d[4]), "y":other_y },
+            {"x":dim.xscale(d[5]), "y":other_y },
+            {"x":dim.xscale(d[1]), "y":this_y }];
+
+    assembly_svg.selectAll("polygon")
+            .data([poly])
+            .enter()
+            .append("polygon")
+            .attr("points",function(d) { 
+                   return d.map(function(d) {
+                       return [d.x,d.y].join(",");
+                   }).join(" ");
+               })
+            .attr("fill", "blue")
+            .attr("fill-opacity",0.3);
+}
+
+function disconnect_alignments(d, i) {
+    assembly_svg.selectAll("polygon").remove()
+}
+
 
 
 function show_contig_alignments(contig, assembly_svg) {
 
     assembly_svg.selectAll("path.contig_link").remove();
-    assembly_svg.selectAll("line.contig_alignment").remove();
+    assembly_svg.selectAll("rect.contig_alignment").remove();
 
     if (contig == current_aligned_contig) {
         current_aligned_contig = '';
@@ -335,7 +339,7 @@ function show_contig_alignments(contig, assembly_svg) {
 
     current_aligned_contig = contig;
     
-    var cl = assembly_svg.selectAll("path.contig_link")
+    assembly_svg.selectAll("path.contig_link")
         .data(contig_links[contig])
         .enter()
         .append("path")
@@ -344,19 +348,42 @@ function show_contig_alignments(contig, assembly_svg) {
                     .x(function(d) { return d.x == -1 ? 0 : dim.xscale(d.x); })
                     .y(function(d) { return assembly_dim.yscale(d.y) + assembly_dim.yscale.bandwidth()/2; })
         )
-        .style("stroke", "purple");
+        .style("stroke-opacity", function(d) {
+            return 0.1 + 0.9*contig_coverage_prop[contig_short_id[contig]][contig_short_id[d.target.y]];
+        })
+        .style("stroke", "purple")
 
-    var ca = assembly_svg.selectAll("line.contig_alignment")
+    assembly_svg.selectAll("rect.contig_alignment.self")
         .data(contig_alignments[contig_short_long[contig]])
         .enter()
-        .append("line")
-        .attr("class", "contig_alignment")
-        .attr("contig", contig)
-        .attr("x1", function(d) { return dim.xscale(d[0]); })
-        .attr("x2", function(d) { return dim.xscale(d[1]); })
-        .attr("y1", function(d) { return assembly_dim.yscale(contig) + assembly_dim.yscale.bandwidth(); })
-        .attr("y2", function(d) { return assembly_dim.yscale(contig) + assembly_dim.yscale.bandwidth(); })
-        .style("stroke", "blue");
+        .append("rect")
+        .attr("class", "contig_alignment self")
+        .attr("contig1", contig)
+        .attr("contig2", function(d) { return contig_id_short[d[3]]; })
+        .attr("x", function(d) { return dim.xscale(d[0]); })
+        .attr("width", function(d) { return dim.xscale(d[1])-dim.xscale(d[0]); })
+        .attr("y", function(d) { return assembly_dim.yscale(contig) + assembly_dim.yscale.bandwidth(); })
+        .attr("height", function(d) { return assembly_dim.yscale.bandwidth(); })
+        .style("fill", "blue")
+        .style("stroke-opacity", 0)
+        .on("mouseover", connect_alignments)
+        .on("mouseout", disconnect_alignments);
+
+    assembly_svg.selectAll("rect.contig_alignment.other")
+        .data(contig_alignments[contig_short_long[contig]])
+        .enter()
+        .append("rect")
+        .attr("class", "contig_alignment other")
+        .attr("contig1", contig)
+        .attr("contig2", function(d) { return contig_id_short[d[3]]; })
+        .attr("x", function(d) { return dim.xscale(d[4]); })
+        .attr("width", function(d) { return dim.xscale(d[5])-dim.xscale(d[4]); })
+        .attr("y", function(d) { return assembly_dim.yscale(contig_id_short[d[3]]) + assembly_dim.yscale.bandwidth(); })
+        .attr("height", function(d) { return assembly_dim.yscale.bandwidth(); })
+        .style("fill", "blue")
+        .style("stroke-opacity", 0)
+        .on("mouseover", connect_alignments)
+        .on("mouseout", disconnect_alignments);
 }
 
 function build_contig(contig, dim, assembly_dim, windowsize) {
