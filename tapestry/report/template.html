@@ -573,7 +573,10 @@ $('#contig_table').bootstrapTable({
     data: contigs,
     onPostBody: function() { update_assembly() },
     onReorderRow: function(new_order) {
-        contigs = new_order.slice(0);
+        new_ids = new_order.map(d=>d.id)
+        contigs.sort(function(a,b) {
+            return new_ids.indexOf(a.id) - new_ids.indexOf(b.id);
+        })
         update_assembly();
     },
     onCheck: function(row) {
