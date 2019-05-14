@@ -15,8 +15,6 @@ if __name__ == '__main__':
 
     assembly = Assembly(args.assembly, args.reads, args.telomere, args.output, args.cores, args.depth, args.length, args.windowsize)
 
-    assembly.plot()
-
     assembly.report()
 
     log.info("Done")

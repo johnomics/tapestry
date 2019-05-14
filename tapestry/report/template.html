@@ -126,7 +126,7 @@ var contig_links = {};
 for (var contig_name_long in contig_alignments) {
     contig_name_short = contig_names[contig_name_long];
     contig_links[contig_name_short] = [];
-    contig_matches = [...new Set(contig_alignments[contig_name_long].map(d => contig_id_short[d[3]]))]
+    contig_matches = [...new Set(contig_alignments[contig_name_long].map(d => contig_id_short[d[2]]))]
     contig_matches.forEach(function(contig_match) {
         if (contig_name_short != contig_match) {
             contig_links[contig_name_short].push({source: {"x":-1, "y": contig_name_short}, target: {"x":0, "y": contig_match}});
@@ -208,6 +208,34 @@ function check_min(min_val, list, i) {
 
 function mq_opacity(mq) { return mq/60 }
 
+function clip_colour(type) {
+    if (type === 'C') { // Connection
+        return 'purple'
+    } else if (type === 'L') { // Loose
+        return 'orange'
+    } else if (type === 'S') { // Self (within-contig)
+        return 'pink'
+    } else {
+        return 'black'
+    }
+}
+
+function contig_text_hover(x, y, contig_id, anchor) {
+    reads_svg.append("text")
+        .attr("class", "alignment text")
+        .attr("x", dim.xscale(x))
+        .attr("y", reads_dim.yscale(y))
+        .attr("text-anchor", anchor)
+        .attr("alignment-baseline", "middle")
+        .attr("fill", "black")
+        .attr("font-size", "10px")
+        .text(contig_id == -1 ? '-' : contig_id_short[contig_id]);
+}
+
+function contig_text_unhover() {
+    reads_svg.selectAll("text.alignment.text").remove()
+}
+
 function plot_read_alignments(alignments, dim, assembly_dim, reads_dim, svg, contig) {
 
     // contig_read_alignments:
@@ -234,35 +262,46 @@ function plot_read_alignments(alignments, dim, assembly_dim, reads_dim, svg, con
         .enter();
     
     ra.append("line")
-        .attr("class", "read_alignment")
+        .attr("class", "read_alignment main")
         .attr("x1", function(d) { return dim.xscale(d[1]); })
         .attr("x2", function(d) { return dim.xscale(d[2]); })
         .attr("y1", function(d) { return reads_dim.yscale(d[5]); })
         .attr("y2", function(d) { return reads_dim.yscale(d[5]); })
         .style("stroke-opacity", function(d) { return mq_opacity(d[4]) })
-        .style("stroke", "blue");
+        .style("stroke", "blue")
+        .on("mouseover", function(d) {
+            contig_text_hover(d[0], d[5], d[6], "end");
+            contig_text_hover(d[3], d[5], d[7], "start");
+        })
+        .on("mouseout", contig_text_unhover);
 
     ra.append("line")
-        .attr("class", "read_alignment")
+        .attr("class", "read_alignment clip left")
         .attr("x1", function(d) { return dim.xscale(d[0]); })
         .attr("x2", function(d) { return dim.xscale(d[1]); })
         .attr("y1", function(d) { return reads_dim.yscale(d[5]); })
         .attr("y2", function(d) { return reads_dim.yscale(d[5]); })
-        .style("stroke-opacity", function(d) { return mq_opacity(d[4]) })
-        .style("stroke", "orange");
+        .style("stroke-opacity", function(d) { return mq_opacity(d[4]); })
+        .style("stroke", function(d) { return clip_colour(d[8]); })
+        .on("mouseover", function(d) {
+            contig_text_hover(d[0], d[5], d[6], "end");
+        })
+        .on("mouseout", contig_text_unhover);
 
     ra.append("line")
-          .attr("class", "read_alignment")
+          .attr("class", "read_alignment clip right")
+          .attr("contig_id", function(d) { return d[7]})
           .attr("x1", function(d) { return dim.xscale(d[2]); })
           .attr("x2", function(d) { return dim.xscale(d[3]); })
           .attr("y1", function(d) { return reads_dim.yscale(d[5]); })
           .attr("y2", function(d) { return reads_dim.yscale(d[5]); })
           .style("stroke-opacity", function(d) { return mq_opacity(d[4]) })
-          .style("stroke", "pink");
-}
+          .style("stroke", function(d) { return clip_colour(d[9])})
+        .on("mouseover", function(d) {
+            contig_text_hover(d[3], d[5], d[7], "start");
+        })
+        .on("mouseout", contig_text_unhover);
 
-function plot_alignments(contig, dim, assembly_dim, reads_dim, reads_svg) {
-    plot_read_alignments(read_alignments[contig], dim, assembly_dim, reads_dim, reads_svg, contig_names[contig]);
 }
 
 function reorder_assembly(contigs, assembly_dim, assembly_svg) {
@@ -312,8 +351,8 @@ function connect_alignments(d, i) {
     }
 
     poly = [{"x":dim.xscale(d[0]), "y":this_y },
+            {"x":dim.xscale(d[3]), "y":other_y },
             {"x":dim.xscale(d[4]), "y":other_y },
-            {"x":dim.xscale(d[5]), "y":other_y },
             {"x":dim.xscale(d[1]), "y":this_y }];
 
     assembly_svg.selectAll("polygon")
@@ -367,7 +406,7 @@ function show_contig_alignments(contig, assembly_svg) {
         .append("rect")
         .attr("class", "contig_alignment self")
         .attr("contig1", contig)
-        .attr("contig2", function(d) { return contig_id_short[d[3]]; })
+        .attr("contig2", function(d) { return contig_id_short[d[2]]; })
         .attr("x", function(d) { return dim.xscale(d[0]); })
         .attr("width", function(d) { return dim.xscale(d[1])-dim.xscale(d[0]); })
         .attr("y", function(d) { return assembly_dim.yscale(contig) + assembly_dim.yscale.bandwidth(); })
@@ -384,10 +423,10 @@ function show_contig_alignments(contig, assembly_svg) {
         .append("rect")
         .attr("class", "contig_alignment other")
         .attr("contig1", contig)
-        .attr("contig2", function(d) { return contig_id_short[d[3]]; })
-        .attr("x", function(d) { return dim.xscale(d[4]); })
-        .attr("width", function(d) { return dim.xscale(d[5])-dim.xscale(d[4]); })
-        .attr("y", function(d) { return assembly_dim.yscale(contig_id_short[d[3]]) + assembly_dim.yscale.bandwidth(); })
+        .attr("contig2", function(d) { return contig_id_short[d[2]]; })
+        .attr("x", function(d) { return dim.xscale(d[3]); })
+        .attr("width", function(d) { return dim.xscale(d[4])-dim.xscale(d[3]); })
+        .attr("y", function(d) { return assembly_dim.yscale(contig_id_short[d[2]]) + assembly_dim.yscale.bandwidth(); })
         .attr("height", function(d) { return assembly_dim.yscale.bandwidth(); })
         .style("fill", "blue")
         .style("fill-opacity", 0.1)
@@ -590,7 +629,7 @@ $('#contig_table').bootstrapTable({
         update_assembly();
     },
     onCheck: function(row) {
-        plot_alignments(row.longname, dim, assembly_dim, reads_dim, reads_svg);
+        plot_read_alignments(read_alignments[row.longname], dim, assembly_dim, reads_dim, reads_svg, contig_names[row.longname]);
     },
     onClickCell: function(field, value, row, $element) {
         if (field === 'included') {

@@ -99,6 +99,7 @@ class Assembly(AssemblyPlot):
 
     def load_assembly(self):
         contigs = {}
+        contig_ids = {}
         no_assembly_found = not file_exists(self.filenames['assembly'])
         if no_assembly_found:
             log.info(f"Will use existing {self.filenames['assembly']}")
@@ -111,6 +112,7 @@ class Assembly(AssemblyPlot):
                 rec.seq = rec.seq.upper()
                 orig_name = rec.id
                 rec.id = f"{self.outdir}_{rec.id}"
+                contig_ids[rec.id] = contig_id
                 contigs[rec.id] = Contig(contig_id, rec, orig_name, self.telomeres, self.windowsize, self.outdir, self.filenames)
                 contig_id += 1
                 if no_assembly_found:
@@ -118,6 +120,10 @@ class Assembly(AssemblyPlot):
         except IOError:
             log.error(f"Can't load assembly from file {self.assemblyfile}!")
             sys.exit()
+
+        # Add dictionary of contig IDs to every contig
+        for c in contigs:
+            contigs[c].contig_ids = contig_ids
 
         return contigs
 
@@ -274,14 +280,12 @@ class Assembly(AssemblyPlot):
 
 
     def html_report(self):
+        log.info(f"Generating Tapestry report")
         env = Environment(loader=FileSystemLoader(report_folder))
         env.globals['include_file'] = include_file
         template = env.get_template('template.html')
 
-        # Replace contig names in alignments with IDs, for report size and consistency
         contig_alignments = {c:self.contigs[c].contig_alignments_json() for c in self.contigs}
-        for c in contig_alignments:
-            contig_alignments[c] = [(b, e, r, self.contigs[cn].id, cs, ce) for b, e, r, cn, cs, ce in contig_alignments[c] if c in self.contigs and cn != c]
 
         contig_coverage = defaultdict(lambda: defaultdict(int))
         for c1 in self.contigs:

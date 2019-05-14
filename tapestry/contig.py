@@ -99,18 +99,10 @@ class Contig:
         alignments = []
 
         for a in sorted(self.contig_alignments, key=lambda a: a.begin):
-            assigned_row = None
-            for r, row in enumerate(plot_row_ends):
-                if row + 1000 < a.begin:
-                    assigned_row = r
-                    plot_row_ends[r] = a.end
-                    break
-            if assigned_row is None:
-                assigned_row = len(plot_row_ends)
-                plot_row_ends.append(a.end)
-
             contig, contig_start, contig_end = a.data
-            alignments.append((a.begin, a.end, assigned_row+1, contig, contig_start, contig_end))
+            if contig == self.name:
+                continue
+            alignments.append((a.begin, a.end, self.contig_ids[contig], contig_start, contig_end))
 
         return alignments
 
@@ -361,6 +353,18 @@ class Contig:
         return left_connectors, right_connectors
 
 
+    def get_neighbour_details(self, neighbour_contig):
+        neighbour_id = -1
+        neighbour_type = 'L' # Loose
+        if neighbour_contig is not None:
+            neighbour_id = self.contig_ids[neighbour_contig]
+            if neighbour_contig == self.name:
+                neighbour_type = 'S' # Self
+            else:
+                neighbour_type = 'C' # Connection
+        return neighbour_id, neighbour_type
+
+
     def plot_read_alignments(self):
         read_alignments = []
         plot_row_ends = []
@@ -373,9 +377,9 @@ class Contig:
             # if contigs are different, want to show full clips even if the clip aligns elsewhere
             start_distance, end_distance = a.left_clip, a.right_clip
             if a.pre_contig == self.name:
-                start_distance = a.pre_distance
+                start_distance = max(a.pre_distance, 0) # Ignore overlapping alignments with negative distances
             if a.post_contig == self.name:
-                end_distance = a.post_distance
+                end_distance = max(a.post_distance, 0)
             
             start_position = a.ref_start - start_distance
             end_position = a.ref_end + end_distance
@@ -390,6 +394,9 @@ class Contig:
                 assigned_row = len(plot_row_ends)
                 plot_row_ends.append(end_position)
 
+            pre_contig_id, pre_type = self.get_neighbour_details(a.pre_contig)
+            post_contig_id, post_type = self.get_neighbour_details(a.post_contig)
+
             # int conversion required because Pandas uses numpy int64, which json doesn't understand
             read_alignments.append([int(x) for x in
                                 [start_position,    # read start including left clip or pre distance
@@ -397,7 +404,11 @@ class Contig:
                                  a.ref_end,         # contig alignment end
                                  end_position,      # read end including right clip or post distance
                                  a.mq,              # mapping quality
-                                 assigned_row+1     # y position on plot
+                                 assigned_row+1,    # y position on plot
+                                 pre_contig_id,
+                                 post_contig_id
                            ]])
+            read_alignments[-1].append(pre_type)
+            read_alignments[-1].append(post_type)
 
         return read_alignments
