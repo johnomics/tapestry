@@ -366,24 +366,36 @@ class Contig:
         plot_row_ends = []
         if self.alignments.read_alignments(self.name) is None:
             return read_alignments
-
+                
         for i, a in self.alignments.read_alignments(self.name).iterrows():
+
+            # Only use neighbour distances if contig is the same;
+            # if contigs are different, want to show full clips even if the clip aligns elsewhere
+            start_distance, end_distance = a.left_clip, a.right_clip
+            if a.pre_contig == self.name:
+                start_distance = a.pre_distance
+            if a.post_contig == self.name:
+                end_distance = a.post_distance
+            
+            start_position = a.ref_start - start_distance
+            end_position = a.ref_end + end_distance
+            
             assigned_row = None
             for r, row in enumerate(plot_row_ends):
-                if row + 1000 < a.start_position:
+                if row + 1000 < start_position:
                     assigned_row = r
-                    plot_row_ends[r] = a.end_position
+                    plot_row_ends[r] = end_position
                     break
             if assigned_row is None:
                 assigned_row = len(plot_row_ends)
-                plot_row_ends.append(a.end_position)
+                plot_row_ends.append(end_position)
 
             # int conversion required because Pandas uses numpy int64, which json doesn't understand
             read_alignments.append([int(x) for x in
-                                [a.start_position,  # read start including left clip
+                                [start_position,    # read start including left clip or pre distance
                                  a.ref_start,       # contig alignment start
                                  a.ref_end,         # contig alignment end
-                                 a.end_position,    # read end including right clip
+                                 end_position,      # read end including right clip or post distance
                                  a.mq,              # mapping quality
                                  assigned_row+1     # y position on plot
                            ]])

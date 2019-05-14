@@ -67,8 +67,6 @@ class Assembly(AssemblyPlot):
 
         self.cluster_contigs()
 
-        self.contiglist = sorted(self.contigs, key=lambda c:len(self.contigs[c]), reverse=True)
-
 
     def __len__(self):
         return sum([len(self.contigs[c]) for c in self.contigs])

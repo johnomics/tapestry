@@ -510,8 +510,10 @@ class Alignments():
                 self.alignments.c.left_clip,
                 self.alignments.c.right_clip,
                 self.alignments.c.mq,
-                (self.alignments.c.ref_start - self.alignments.c.left_clip).label('start_position'),
-                (self.alignments.c.ref_end + self.alignments.c.right_clip).label('end_position')
+                self.alignments.c.pre_contig,
+                self.alignments.c.pre_distance,
+                self.alignments.c.post_contig,
+                self.alignments.c.post_distance
             ])
             .select_from(self.reads.join(self.alignments, self.reads.c.name == self.alignments.c.query))
             .where(and_(
