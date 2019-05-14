@@ -5,9 +5,11 @@ import pandas as pd
 
 from collections import namedtuple
 
+from tqdm import tqdm
+
 from sqlalchemy import create_engine, MetaData, Table, Column, ForeignKey, func
 from sqlalchemy import Integer, String, Boolean
-from sqlalchemy.sql import select, and_
+from sqlalchemy.sql import select, and_, or_, bindparam, text
 
 from .misc import file_exists
 
@@ -50,6 +52,7 @@ class Alignments():
             self.load_reference(reference)
             self.load_alignments(contigs_bam, 'contig')
             self.load_alignments(reads_bam, 'read')
+            self.find_neighbours()
 
 
     def tables(self):
@@ -69,6 +72,7 @@ class Alignments():
                 Column('end', Integer)
             ),
             Table('alignments', self.metadata,
+                Column('id', Integer),
                 Column('query', Integer),
                 Column('querytype', String),
                 Column('alntype', Integer),
@@ -82,6 +86,10 @@ class Alignments():
                 Column('aligned_length', Integer),
                 Column('left_clip', Integer),
                 Column('right_clip', Integer),
+                Column('pre_contig', String, ForeignKey('contigs.name')),
+                Column('pre_distance', Integer),
+                Column('post_contig', String, ForeignKey('contigs.name')),
+                Column('post_distance', Integer)
             )
         ]
 
@@ -118,75 +126,92 @@ class Alignments():
             return
 
         try:
+            log.info(f"Loading {query_type} alignments into database")
             with self.engine.connect() as conn:
-                for alignment_chunk, reads_chunk in self.process_bam_chunks(bam_filename, query_type):
+                bam = pysam.AlignmentFile(bam_filename, 'rb')
+                aln_id = 0
+                chunk_count = 0
+            
+                read_names = {}
+                reads_chunk = []
+                alignment_chunk = []
+            
+                for aln in bam.fetch(until_eof=True): # until_eof includes unmapped reads
+                    alntype                      = self.get_alignment_type(aln)
+                    query_length, aligned_length = self.get_alignment_lengths(aln, alntype)
+            
+                    query_start, query_end, left_clip, right_clip = self.get_query_ends(aln, alntype, query_length)
+            
+                    if query_type is 'contig':
+                        if aln.query_name == aln.reference_name:
+                            continue
+                        elif alntype is not 'unmapped':
+                            # Insert contig alignment in the other direction
+                            aln_id += 1
+                            alignment_chunk.append({
+                                'id':aln_id,
+                                'query':aln.reference_name,
+                                'querytype':query_type,
+                                'alntype':alntype,
+                                'contig':aln.query_name,
+                                'mq':aln.mapping_quality,
+                                'reversed':aln.is_reverse,
+                                'ref_start': query_start,
+                                'ref_end': query_end,
+                                'query_start': aln.reference_start + 1, # BAM is 0-based
+                                'query_end': aln.reference_end,
+                                'left_clip': None,
+                                'right_clip': None,
+                                'aligned_length': None,
+                                'pre_contig': None,
+                                'pre_distance': None,
+                                'post_contig': None,
+                                'post_distance': None
+                            })
+            
+                    if query_type is 'read' and aln.query_name not in read_names:
+                            read_names[aln.query_name] = True
+                            reads_chunk.append({'name':aln.query_name, 'length':query_length})
+            
+                    aln_id += 1
+                    alignment_chunk.append({
+                        'id':aln_id,
+                        'query':aln.query_name,
+                        'querytype':query_type,
+                        'alntype':alntype,
+                        'contig':aln.reference_name,
+                        'mq':aln.mapping_quality,
+                        'reversed':aln.is_reverse,
+                        'ref_start': aln.reference_start + 1, # BAM is 0-based
+                        'ref_end': aln.reference_end,
+                        'query_start': query_start,
+                        'query_end': query_end,
+                        'left_clip': left_clip,
+                        'right_clip': right_clip,
+                        'aligned_length': aligned_length,
+                        'pre_contig': None,
+                        'pre_distance': None,
+                        'post_contig': None,
+                        'post_distance': None
+                    })
+            
+                    chunk_count += 1
+                    if chunk_count == 1000:
+                        ids = list(map(lambda x: x['id'], alignment_chunk))
+                        conn.execute(self.alignments.insert(), alignment_chunk)
+                        chunk_count = 0
+                        alignment_chunk = []
+                        if reads_chunk:
+                            conn.execute(self.reads.insert(), reads_chunk)
+                            reads_chunk = []
+            
+                if alignment_chunk:
                     conn.execute(self.alignments.insert(), alignment_chunk)
-                    if reads_chunk:
-                        conn.execute(self.reads.insert(), reads_chunk)
+                if reads_chunk:
+                    conn.execute(self.reads.insert(), reads_chunk)
+
         except:
             log.error(f"Failed to add {query_type} alignments to database {self.db_filename}")
-
-
-    def process_bam_chunks(self, bamfile, query_type, chunksize=1000):
-        bam = pysam.AlignmentFile(bamfile, 'rb')
-        alncount = 0
-        read_names = {}
-        reads_chunk = []
-        alignment_chunk = []
-        for aln in bam.fetch(until_eof=True): # until_eof includes unmapped reads
-            alntype                      = self.get_alignment_type(aln)
-            query_length, aligned_length = self.get_alignment_lengths(aln, alntype)
-
-            query_start, query_end, left_clip, right_clip = self.get_query_ends(aln, alntype, query_length)
-            
-            if query_type is 'contig' and aln.query_name == aln.reference_name:
-                continue
-
-            if query_type is 'read' and aln.query_name not in read_names:
-                read_names[aln.query_name] = True
-                reads_chunk.append({'name':aln.query_name, 'length':query_length})
-
-            alignment_chunk.append({
-                'query':aln.query_name,
-                'querytype':query_type,
-                'alntype':alntype,
-                'contig':aln.reference_name,
-                'mq':aln.mapping_quality,
-                'reversed':aln.is_reverse,
-                'ref_start': aln.reference_start + 1, # BAM is 0-based
-                'ref_end': aln.reference_end,
-                'query_start': query_start,
-                'query_end': query_end,
-                'left_clip': left_clip,
-                'right_clip': right_clip,
-                'aligned_length': aligned_length
-            })
-
-            if query_type is 'contig' and alntype is not 'unmapped':
-                # Insert contig alignment in the other direction
-                alignment_chunk.append({
-                    'query':aln.reference_name,
-                    'querytype':query_type,
-                    'alntype':alntype,
-                    'contig':aln.query_name,
-                    'mq':aln.mapping_quality,
-                    'reversed':aln.is_reverse,
-                    'ref_start': query_start,
-                    'ref_end': query_end,
-                    'query_start': aln.reference_start + 1, # BAM is 0-based
-                    'query_end': aln.reference_end,
-                    'left_clip': None,
-                    'right_clip': None,
-                    'aligned_length': None
-                })
-
-            alncount += 1
-            if alncount == 1000:
-                yield alignment_chunk, []
-                alncount = 0
-                alignment_chunk = []
-
-        yield alignment_chunk, reads_chunk
 
 
     def get_alignment_type(self, aln):
@@ -231,6 +256,97 @@ class Alignments():
         if cigar_type not in (4,5): # Not soft- or hard-clipped, so no clip length
             cigar_length = 0
         return cigar_length
+
+
+    def get_multi_alignments(self):
+        # Select alignments and read lengths from reads with more than one alignment
+        stmt = (select([
+                    self.alignments.c.id,
+                    self.alignments.c.query,
+                    self.alignments.c.contig,
+                    self.alignments.c.query_start,
+                    self.alignments.c.query_end,
+                    self.reads.c.length
+                 ])
+                 .select_from(self.reads.join(self.alignments, self.reads.c.name == self.alignments.c.query))
+                 .where(
+                   and_(
+                     self.alignments.c.query.in_(
+                       # Get read names for reads with more than one primary/supplementary alignment (alncount > 1)
+                       (select([text('query')])
+                          .select_from(
+                            select([self.alignments.c.query, func.count(self.alignments.c.query).label('alncount')])
+                              .where(
+                                and_(
+                                  self.alignments.c.querytype=='read',
+                                  or_(self.alignments.c.alntype == 'primary', self.alignments.c.alntype == 'supplementary')
+                                )
+                              )
+                            .group_by('query')
+                          )
+                          .where(text("alncount > 1"))
+                        )
+                      ),
+                      or_(self.alignments.c.alntype == 'primary', self.alignments.c.alntype == 'supplementary')
+                   )
+                 )
+                 .order_by('query', 'query_start')
+               )
+        
+        results = []
+        with self.engine.connect() as conn:
+            results = conn.execute(stmt).fetchall()
+        
+        return results
+
+
+    def find_neighbours(self):
+
+        log.info("Finding neighbouring alignments")
+        results = self.get_multi_alignments()
+        
+        update_stmt = (self.alignments.update()
+                            .where(self.alignments.c.id == bindparam('a_id'))
+                            .values(pre_contig=bindparam('a_pre_contig'),
+                                    pre_distance=bindparam('a_pre_distance'),
+                                    post_contig=bindparam('a_post_contig'),
+                                    post_distance=bindparam('a_post_distance')
+                            )
+                       )
+
+        alncount = 0
+        updates = []
+
+        with self.engine.connect() as conn:
+
+            for i, row in tqdm(enumerate(results), unit=" alignments", total=len(results), leave=False):
+                update = {'a_id': row[0], 
+                          'a_pre_contig': None, 'a_pre_distance': None,
+                          'a_post_contig': None, 'a_post_distance': None
+                          }
+
+                if i > 0 and row[1] == results[i-1][1]:
+                    update['a_pre_contig'] = results[i-1][2]
+                    update['a_pre_distance'] = row[3] - results[i-1][4]
+                else:
+                    update['a_pre_distance'] = row[3] - 1
+
+                if i < len(results)-2 and row[1] == results[i+1][1]:
+                    update['a_post_contig'] = results[i+1][2]
+                    update['a_post_distance'] = results[i+1][3] - row[4]
+                else:
+                    update['a_post_distance'] = row[5] - row[4]
+
+                updates.append(update)
+
+                alncount += 1
+                if alncount == 1000:
+                    conn.execute(update_stmt, updates)
+                    alncount = 0
+                    updates = []
+
+            if updates:
+                conn.execute(update_stmt, updates)
 
 
     def contig_alignments(self, contig_name):
