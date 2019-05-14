@@ -402,7 +402,7 @@ class Alignments():
                 self.alignments.c.contig == contig,
                 self.alignments.c.alntype != "secondary"
             ))
-            .order_by("start_position")
+            .order_by("ref_start")
         )
 
         with self.engine.connect() as conn:

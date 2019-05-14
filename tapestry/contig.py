@@ -368,25 +368,22 @@ class Contig:
             return read_alignments
 
         for i, a in self.alignments.read_alignments(self.name).iterrows():
-            start_position = a.ref_start - a.left_clip
-            end_position = a.ref_end + a.right_clip
-
             assigned_row = None
             for r, row in enumerate(plot_row_ends):
-                if row + 1000 < start_position:
+                if row + 1000 < a.start_position:
                     assigned_row = r
-                    plot_row_ends[r] = end_position
+                    plot_row_ends[r] = a.end_position
                     break
             if assigned_row is None:
                 assigned_row = len(plot_row_ends)
-                plot_row_ends.append(end_position)
+                plot_row_ends.append(a.end_position)
 
             # int conversion required because Pandas uses numpy int64, which json doesn't understand
             read_alignments.append([int(x) for x in
-                                [start_position,    # read start including left clip
+                                [a.start_position,  # read start including left clip
                                  a.ref_start,       # contig alignment start
                                  a.ref_end,         # contig alignment end
-                                 end_position,      # read end including right clip
+                                 a.end_position,    # read end including right clip
                                  a.mq,              # mapping quality
                                  assigned_row+1     # y position on plot
                            ]])
