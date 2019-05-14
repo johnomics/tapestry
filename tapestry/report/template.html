@@ -300,8 +300,16 @@ function reorder_assembly(contigs, assembly_dim, assembly_svg) {
 }
 
 function connect_alignments(d, i) {
-    this_y = assembly_dim.yscale(d3.select(this).attr("contig1")) + assembly_dim.yscale.bandwidth()*1.25;
-    other_y = assembly_dim.yscale(d3.select(this).attr("contig2")) + assembly_dim.yscale.bandwidth()*1.25;
+    this_y = assembly_dim.yscale(d3.select(this).attr("contig1"))
+    other_y = assembly_dim.yscale(d3.select(this).attr("contig2"))
+    
+    if (this_y < other_y) {
+        this_y += assembly_dim.yscale.bandwidth()*2;
+        other_y += assembly_dim.yscale.bandwidth();
+    } else {
+        this_y += assembly_dim.yscale.bandwidth();
+        other_y += assembly_dim.yscale.bandwidth()*2;
+    }
 
     poly = [{"x":dim.xscale(d[0]), "y":this_y },
             {"x":dim.xscale(d[4]), "y":other_y },
@@ -318,7 +326,7 @@ function connect_alignments(d, i) {
                    }).join(" ");
                })
             .attr("fill", "blue")
-            .attr("fill-opacity",0.3);
+            .attr("fill-opacity",0.1);
 }
 
 function disconnect_alignments(d, i) {
@@ -365,6 +373,7 @@ function show_contig_alignments(contig, assembly_svg) {
         .attr("y", function(d) { return assembly_dim.yscale(contig) + assembly_dim.yscale.bandwidth(); })
         .attr("height", function(d) { return assembly_dim.yscale.bandwidth(); })
         .style("fill", "blue")
+        .style("fill-opacity", 0.1)
         .style("stroke-opacity", 0)
         .on("mouseover", connect_alignments)
         .on("mouseout", disconnect_alignments);
@@ -381,6 +390,7 @@ function show_contig_alignments(contig, assembly_svg) {
         .attr("y", function(d) { return assembly_dim.yscale(contig_id_short[d[3]]) + assembly_dim.yscale.bandwidth(); })
         .attr("height", function(d) { return assembly_dim.yscale.bandwidth(); })
         .style("fill", "blue")
+        .style("fill-opacity", 0.1)
         .style("stroke-opacity", 0)
         .on("mouseover", connect_alignments)
         .on("mouseout", disconnect_alignments);
