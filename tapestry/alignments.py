@@ -75,7 +75,7 @@ class Alignments():
                 Column('id', Integer),
                 Column('query', Integer),
                 Column('querytype', String),
-                Column('alntype', Integer),
+                Column('alntype', String),
                 Column('contig', String, ForeignKey('contigs.name')),
                 Column('mq', Integer),
                 Column('reversed', Boolean),
@@ -418,6 +418,34 @@ class Alignments():
             self.alignments.c.ref_end   >= region_start
         ))
 
+    def names_in_region(self, contig_name, region_start, region_end, query_type="read"):
+        stmt = select([self.alignments.c.query])
+        stmt = self.alignments_in_region(stmt, contig_name, query_type, region_start, region_end)
+        results = self.engine.connect().execute(stmt).fetchall()
+        
+        return set([r[0] for r in results])
+
+    def connectors(self, contig, region_start, region_end):
+        stmt = (select([self.alignments.c.query]).where(
+            or_(self.alignments.c.alntype=='primary', self.alignments.c.alntype=='supplementary')
+        ))
+        stmt = self.alignments_in_region(stmt, contig, "read", region_start, region_end)
+        results = self.engine.connect().execute(stmt).fetchall()
+        region_reads = set([r[0] for r in results])
+
+        region_contigs = self.names_in_region(contig, region_start, region_end, "contig")
+
+        stmt = (select([self.alignments.c.query, self.alignments.c.contig, self.alignments.c.ref_start, self.alignments.c.ref_end])
+               .where(and_(
+                   self.alignments.c.query.in_(region_reads),
+                   self.alignments.c.contig != contig,
+                   or_(self.alignments.c.alntype == 'supplementary', self.alignments.c.alntype == 'primary')
+               )))
+
+        results = self.engine.connect().execute(stmt).fetchall()
+
+        Connector = namedtuple('Connector', ['name','contig','start','end'])
+        return [Connector(r[0], r[1], r[2], r[3]) for r in results]
 
     def depths(self, query_type, contig_name=''):
 

@@ -282,18 +282,8 @@ class Contig:
         return ploidy_pc
 
 
-    def get_aln_length(self, cigar):
-        # Just gets the Matching bases, which is not accurate but good enough for finding connectors
-        aln_length = 0
-        for cigar_op in re.findall('\d+\w', cigar):
-            if cigar_op.endswith('M'):
-                aln_length += int(cigar_op[:-1])
-        return aln_length
-
-
-    def get_connections(self, bam, region_start, region_end):
-        connections = defaultdict(IntervalTree)
-        region_reads = defaultdict(int)
+    def get_region_connectors(self, region_start, region_end):
+        connectors = []
 
         if region_start < 0:
             region_start = 0
@@ -301,38 +291,24 @@ class Contig:
         if region_end > len(self):
             region_end = len(self)
 
-        for aln in bam.fetch(self.name, region_start, region_end):
-            region_reads[aln.query_name] = 1
-            if aln.has_tag('SA'):
-                aln_dir = '-' if aln.is_reverse else '+'
-                aln_connections = aln.get_tag('SA').split(';')[:-1]
-                for c in aln_connections:
-                    contig, start, direction, cigar, *c_args = c.split(',')
-                    if contig == self.name:
-                        continue
-                    aln_length = self.get_aln_length(cigar)
-                    connections[contig][int(start):int(start)+aln_length] = 1
+        region_reads = set(self.alignments.names_in_region(self.name, region_start, region_end))
 
-        return connections, region_reads
-
-
-    def get_region_connectors(self, bam, region_start, region_end):
-        connectors = []
-
-        connections, region_reads = self.get_connections(bam, region_start, region_end)
+        connections = defaultdict(IntervalTree)
+        for aln in self.alignments.connectors(self.name, region_start, region_end):
+            connections[aln.contig][aln.start:aln.end] = 1
 
         for contig in connections:
             connections[contig].merge_overlaps()
 
-            contig_reads = defaultdict(int)
+            contig_reads = set()
             for interval in connections[contig]:
-                for interval_aln in bam.fetch(contig, interval.begin, interval.end):
-                    contig_reads[interval_aln.query_name] = 1
+                contig_reads.update(self.alignments.names_in_region(contig, interval.begin, interval.end))
 
             connecting_reads = set(region_reads).intersection(set(contig_reads))
 
             region_connecting_reads_pc = len(connecting_reads)/len(region_reads) if region_reads else 0
             contig_connecting_reads_pc = len(connecting_reads)/len(contig_reads) if contig_reads else 0
+
             if region_connecting_reads_pc >= 0.65 and contig_connecting_reads_pc >= 0.1:
                 connectors.append(f"{contig}:{region_connecting_reads_pc:.2f}:{contig_connecting_reads_pc:.2f}")
 
@@ -342,13 +318,10 @@ class Contig:
     def get_connectors(self):
         left_connectors = right_connectors = []
 
-        if file_exists(self.filenames['reads_bam']):
-            bam = pysam.AlignmentFile(self.filenames['reads_bam'], 'rb')
-
-            if self.completeness() in ['R', '-']:
-                left_connectors = self.get_region_connectors(bam, 0, 10000)
-            if self.completeness() in ['L', '-']:
-                right_connectors = self.get_region_connectors(bam, len(self)-10000, len(self)-1)
+        if self.completeness() in ['R', '-']:
+            left_connectors = self.get_region_connectors(0, 10000)
+        if self.completeness() in ['L', '-']:
+            right_connectors = self.get_region_connectors(len(self)-10000, len(self)-1)
 
         return left_connectors, right_connectors
 

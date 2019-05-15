@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
   <meta name="description" content="Tapestry: quality assessment for small genome assemblies">
   <meta name="author" content="Tapestry">
-  
+
   <title>Tapestry Report</title>
   
   <style type="text/css">
@@ -206,7 +206,7 @@ function check_min(min_val, list, i) {
     return min_val;
 }
 
-function mq_opacity(mq) { return mq/60 }
+function mq_opacity(mq) { return 0.1 + 0.9*mq/60 }
 
 function clip_colour(type) {
     if (type === 'C') { // Connection
