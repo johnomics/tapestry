@@ -168,11 +168,11 @@ class Alignments():
                                 'post_contig': None,
                                 'post_distance': None
                             })
-            
+
                     if query_type is 'read' and aln.query_name not in read_names:
                             read_names[aln.query_name] = True
                             reads_chunk.append({'name':aln.query_name, 'length':query_length})
-            
+
                     aln_id += 1
                     alignment_chunk.append({
                         'id':aln_id,

@@ -255,6 +255,26 @@ function plot_read_alignments(alignments, dim, assembly_dim, reads_dim, svg, con
        .attr("fill", "black")
        .text(contig + " Position (bp)");
 
+    svg.selectAll("line.contig_boundary").remove()
+       
+    svg.append("line")
+       .attr("class", "contig_boundary")
+       .attr("x1", dim.xscale(0) )
+       .attr("x2", dim.xscale(0) )
+       .attr("y1", reads_dim.yscale.range()[0] )
+       .attr("y2", reads_dim.yscale.range()[1] )
+       .style("stroke-dasharray", "5,5")
+       .style("stroke", "black")
+
+    svg.append("line")
+       .attr("class", "contig_boundary")
+       .attr("x1", dim.xscale(contig_lengths[contig_short_id[contig]]) )
+       .attr("x2", dim.xscale(contig_lengths[contig_short_id[contig]]) )
+       .attr("y1", reads_dim.yscale.range()[0] )
+       .attr("y2", reads_dim.yscale.range()[1] )
+       .style("stroke-dasharray", "5,5")
+       .style("stroke", "black")
+
     svg.selectAll("line.read_alignment").remove()
 
     var ra = svg.selectAll("line.read_alignment")
