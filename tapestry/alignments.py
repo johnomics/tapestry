@@ -266,7 +266,8 @@ class Alignments():
                     self.alignments.c.contig,
                     self.alignments.c.query_start,
                     self.alignments.c.query_end,
-                    self.reads.c.length
+                    self.reads.c.length,
+                    self.alignments.c.reversed
                  ])
                  .select_from(self.reads.join(self.alignments, self.reads.c.name == self.alignments.c.query))
                  .where(
@@ -325,17 +326,27 @@ class Alignments():
                           'a_post_contig': None, 'a_post_distance': None
                           }
 
+#                0  1     2      3      4    5    6
+#                id query contig qstart qend rlen rev
+
+                # Check any previous alignment for this read
                 if i > 0 and row[1] == results[i-1][1]:
                     update['a_pre_contig'] = results[i-1][2]
                     update['a_pre_distance'] = row[3] - results[i-1][4]
                 else:
                     update['a_pre_distance'] = row[3] - 1
 
+                # Check any next alignment for this read
                 if i < len(results)-2 and row[1] == results[i+1][1]:
                     update['a_post_contig'] = results[i+1][2]
                     update['a_post_distance'] = results[i+1][3] - row[4]
                 else:
                     update['a_post_distance'] = row[5] - row[4]
+
+                if row[6]: # Reversed
+                    pc, pd = update['a_pre_contig'], update['a_pre_distance']
+                    update['a_pre_contig'], update['a_pre_distance'] = update['a_post_contig'], update['a_post_distance']
+                    update['a_post_contig'], update['a_post_distance'] = pc, pd
 
                 updates.append(update)
 
