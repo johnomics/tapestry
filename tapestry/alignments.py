@@ -426,6 +426,7 @@ class Alignments():
         return set([r[0] for r in results])
 
     def connectors(self, contig, region_start, region_end):
+        # Get primary or supplementary read alignments in the end region
         stmt = (select([self.alignments.c.query]).where(
             or_(self.alignments.c.alntype=='primary', self.alignments.c.alntype=='supplementary')
         ))
@@ -433,19 +434,27 @@ class Alignments():
         results = self.engine.connect().execute(stmt).fetchall()
         region_reads = set([r[0] for r in results])
 
-        region_contigs = self.names_in_region(contig, region_start, region_end, "contig")
-
-        stmt = (select([self.alignments.c.query, self.alignments.c.contig, self.alignments.c.ref_start, self.alignments.c.ref_end])
+        # Get connecting alignments on other contigs for these reads
+        stmt = (select([self.alignments.c.contig, self.alignments.c.ref_start, self.alignments.c.ref_end])
                .where(and_(
                    self.alignments.c.query.in_(region_reads),
                    self.alignments.c.contig != contig,
                    or_(self.alignments.c.alntype == 'supplementary', self.alignments.c.alntype == 'primary')
                )))
 
-        results = self.engine.connect().execute(stmt).fetchall()
+        read_results = self.engine.connect().execute(stmt).fetchall()
 
-        Connector = namedtuple('Connector', ['name','contig','start','end'])
-        return [Connector(r[0], r[1], r[2], r[3]) for r in results]
+        stmt = (select([self.alignments.c.query, self.alignments.c.query_start, self.alignments.c.query_end, self.alignments.c.mq])
+               .where(self.alignments.c.querytype=='contig')
+               )
+        stmt = self.alignments_in_region(stmt, contig, "contig", region_start, region_end)
+        contig_results = self.engine.connect().execute(stmt).fetchall()
+
+        # Label other aligned regions as connectors
+        Connector = namedtuple('Connector', ['contig','start','end'])
+        connectors = [Connector(r[0], r[1], r[2]) for r in read_results + contig_results]
+
+        return connectors
 
     def depths(self, query_type, contig_name=''):
 
