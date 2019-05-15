@@ -100,13 +100,13 @@ class Assembly(AssemblyPlot):
     def load_assembly(self):
         contigs = {}
         contig_ids = {}
-        no_assembly_found = not file_exists(self.filenames['assembly'])
-        if no_assembly_found:
+        assembly_found = file_exists(self.filenames['assembly'])
+        if assembly_found:
             log.info(f"Will use existing {self.filenames['assembly']}")
 
         try:
             log.info(f"Loading genome assembly")
-            assembly_out = open(self.filenames['assembly'], 'w') if no_assembly_found else None
+            assembly_out = open(self.filenames['assembly'], 'w') if not assembly_found else None
             contig_id = 0
             for rec in SeqIO.parse(open(self.assemblyfile, 'r'), "fasta"):
                 rec.seq = rec.seq.upper()
@@ -115,7 +115,7 @@ class Assembly(AssemblyPlot):
                 contig_ids[rec.id] = contig_id
                 contigs[rec.id] = Contig(contig_id, rec, orig_name, self.telomeres, self.windowsize, self.outdir, self.filenames)
                 contig_id += 1
-                if no_assembly_found:
+                if not assembly_found:
                     SeqIO.write(rec, assembly_out, "fasta")
         except IOError:
             log.error(f"Can't load assembly from file {self.assemblyfile}!")

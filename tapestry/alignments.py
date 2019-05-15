@@ -471,13 +471,12 @@ class Alignments():
 
         # Get read depths for each region
         rd = (select([
-                self.ranges.c.contig, 
-                self.ranges.c.start, 
+                self.ranges.c.contig,
+                self.ranges.c.start,
                 func.count(self.alignments.c.query).label('depth')
              ])
               .select_from(self.ranges.join(self.alignments, self.ranges.c.contig == self.alignments.c.contig))
-              .where(and_(self.alignments.c.alntype.in_(["primary", "supplementary"]),
-                         self.alignments.c.mq == 60)
+              .where(and_(self.alignments.c.alntype.in_(["primary", "supplementary"]))
                     )
              )
 
