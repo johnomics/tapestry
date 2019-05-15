@@ -628,6 +628,19 @@ function include_checkbox(value) {
     return '<input type="checkbox" ' + (value==true ? ' checked ' : '' ) + '</input>';
 }
 
+function DoCellData(cell, rowIndex, colIndex, htmlData) {
+    var retVal = htmlData;
+    console.log(htmlData);
+    if (htmlData.includes('checkbox')) {
+        if (htmlData.includes('checked')) {
+            retVal = "yes";
+        } else {
+            retVal = "no";
+        }
+    }
+    return retVal;
+}
+
 $.fn.editable.defaults.mode = 'inline';
 $('#assembly_table').bootstrapTable({data: calculate_stats(contigs)});
 $('#contig_table').bootstrapTable({
@@ -639,6 +652,7 @@ $('#contig_table').bootstrapTable({
     sortPriority: [{"sortName":"included","sortOrder":"desc"}, {"sortName":"length","sortOrder":"desc"}],
     showExport: true,
     exportTypes: ['csv'],
+    exportOptions: { onCellHtmlData: DoCellData },
     data: contigs,
     onPostBody: function() { update_assembly() },
     onReorderRow: function(new_order) {

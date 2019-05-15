@@ -476,7 +476,8 @@ class Alignments():
                 func.count(self.alignments.c.query).label('depth')
              ])
               .select_from(self.ranges.join(self.alignments, self.ranges.c.contig == self.alignments.c.contig))
-              .where(and_(self.alignments.c.alntype.in_(["primary", "supplementary"]))
+              .where(and_(self.alignments.c.alntype.in_(["primary", "supplementary"]),
+                          self.alignments.c.mq == 60)
                     )
              )
 

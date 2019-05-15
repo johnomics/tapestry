@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import sys, argparse
+import sys, argparse, csv
 
 from Bio import SeqIO
 from Bio.Seq import Seq
@@ -10,7 +10,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="clean: filter and order assembly from list of contigs")
 
     parser.add_argument('-a', '--assembly', help="filename of assembly in FASTA format", type=str, required=True)
-    parser.add_argument('-c', '--contiglist', help="filename of list of contigs to keep, one on each line", type=str, required=True)
+    parser.add_argument('-c', '--csv', help="Tapestry CSV output", type=str, required=True)
     parser.add_argument('-o', '--output', help="filename of output contigs, default filtered_assembly.fasta", type=str, default="filtered_assembly.fasta")
 
     args = parser.parse_args()
@@ -19,10 +19,11 @@ if __name__ == '__main__':
     print(f"Loaded {len(assembly)} contigs from original assembly {args.assembly}", file=sys.stderr)
 
     contigs = []
-    with open(args.contiglist, 'r') as contigfile:
-        for contig in contigfile:
-            contigs.append(contig.rstrip())
-    print(f"Loaded list {len(contigs)} contigs to retain from {args.contiglist}", file=sys.stderr)
+    with open(args.csv, 'r') as csvfile:
+        for row in csv.DictReader(csvfile):
+            if row['Keep'] == 'yes':
+                contigs.append(row['Contig'])
+    print(f"Loaded list {len(contigs)} contigs to retain from {args.csv}", file=sys.stderr)
 
     with open(args.output, 'w') as output:
         contigs_written = 0
