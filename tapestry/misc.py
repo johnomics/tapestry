@@ -40,8 +40,7 @@ def get_args(arglist=[], description="", scriptargs=[]):
         exec(f'parser.add_argument({scriptarg})')
 
     parser.add_argument('-c', '--cores', help="number of parallel cores to use (default 1)", type=int, default=1)
-    parser.add_argument('-v', '--verbose', help="report on progress", action="count", default=0)
-    parser.add_argument('-V', '--version', help="report version number and exit", action="store_true")
+    parser.add_argument('-v', '--version', help="report version number and exit", action="store_true")
 
     # If no arguments, print usage message
     if not arglist:
@@ -54,9 +53,7 @@ def get_args(arglist=[], description="", scriptargs=[]):
         versions()
         sys.exit()
 
-    log.basicConfig(format="%(asctime)s %(levelname)s\t%(message)s", datefmt="%Y-%m-%d %H:%M:%S")
-
-    set_verbosity(args.verbose)
+    log.basicConfig(format="%(asctime)s %(levelname)s\t%(message)s", datefmt="%Y-%m-%d %H:%M:%S", level=log.INFO)
 
     if args.cores < 1:
         log.error("Please specify at least one core")
@@ -95,33 +92,22 @@ def setup_output(outdir):
 
 
 
-def versions(verbosity=2):
+def versions():
 
     log.getLogger().setLevel(log.INFO) # Suppress plumbum DEBUG messages
     print(f"Tapestry version {__version__}")
 
-    debug = "Dependencies\n"
+    version_message = "Dependencies\n"
 
     if 'minimap2' in globals():
-        debug += f"minimap2\t{minimap2('--version').rstrip()}\t{minimap2}\n"
+        version_message += f"minimap2\t{minimap2('--version').rstrip()}\t{minimap2}\n"
     else:
-        debug += f"minimap2\tMISSING\n"
+        version_message += f"minimap2\tMISSING\n"
 
     samtools_version = samtools['--version'] | head['-n 1'] | cut['-d ', '-f2']
-    debug += f"samtools\t{samtools_version().rstrip()}\t{samtools}\n"
+    version_message += f"samtools\t{samtools_version().rstrip()}\t{samtools}\n"
 
-    set_verbosity(verbosity) # Reset logger now plumbum commands are done
-
-    print(debug.expandtabs(15))
-
-
-def set_verbosity(verbosity):
-    if verbosity == 1:
-        log.getLogger().setLevel(log.INFO)
-    elif verbosity > 1:
-        log.getLogger().setLevel(log.DEBUG)
-    else:
-        log.getLogger().setLevel(log.WARN)
+    print(version_message.expandtabs(15))
 
 
 def file_exists(filename, deps=[]):

@@ -11,7 +11,7 @@ if __name__ == '__main__':
 
     args = get_weave_args(sys.argv[1:]) # Pass in arguments so this function can be unit tested
 
-    versions(args.verbose)
+    versions()
 
     assembly = Assembly(args.assembly, args.reads, args.telomere, args.output, args.cores, args.depth, args.length, args.windowsize)
 
