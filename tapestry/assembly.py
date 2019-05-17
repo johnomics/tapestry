@@ -14,7 +14,6 @@ from Bio.Seq import Seq
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
 
 from jinja2 import Environment, FileSystemLoader
-from .assembly_plot import AssemblyPlot
 
 from .contig import Contig, process_contig, get_ploidy
 from .alignments import Alignments
@@ -28,13 +27,12 @@ filenames = {
     'reads_index'      : 'reads_assembly.bam.bai',
     'alignments'       : 'alignments.db',
     'contigs_bam'      : 'contigs_assembly.bam',
-    'contigs_index'    : 'contigs_assembly.bam.bai',
-    'contigs_paf'      : 'contigs_assembly.paf.gz',
+    'contigs_index'    : 'contigs_assembly.bam.bai'
 }
 
 
 
-class Assembly(AssemblyPlot):
+class Assembly():
 
     def __init__(self, assemblyfile, readfile, telomeres, outdir, cores, depth, minreadlength, windowsize):
         self.assemblyfile = assemblyfile
@@ -310,11 +308,3 @@ class Assembly(AssemblyPlot):
         self.contig_report()
         self.assembly_report()
         self.html_report()
-
-
-    def plot(self):
-        log.info(f"Plotting")
-        self.lengthplot()
-        if self.readfile:
-            self.depthplot_full()
-            self.depthplot_summary()

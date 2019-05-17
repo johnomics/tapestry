@@ -10,8 +10,6 @@ from plumbum import local, CommandNotFound
 failed = []
 tools = {'minimap2':'minimap2', 
          'samtools':'samtools', 
-         'zgrep':'zgrep', 
-         'pigz':'pigz',
          'head':'head', 
          'cut':'cut'}
 
@@ -85,19 +83,6 @@ def get_weave_args(arglist=[]):
     return args
 
 
-def get_stitch_args(arglist=[]):
-    args = get_args(sys.argv[1:], # Pass in arguments so this function can be unit tested
-           "stitch: compare genome assemblies",
-           ["'-a', '--assemblies', help='tapestry folders', type=str, action='append', nargs='+'",
-            "'-o', '--output', help='directory to write output, default stitch_output', type=str, default='stitch_output'"]) 
-
-    if len(args.assemblies[0]) < 2:
-        log.error("Please specify at least two Tapestry folders to process (-a, --assemblies)")
-        sys.exit()
-
-    return args
-
-
 def setup_output(outdir):
     try:
         os.mkdir(outdir)
@@ -146,10 +131,6 @@ def file_exists(filename, deps=[]):
 
 def flatten(l):
     return list(itertools.chain.from_iterable(l))
-
-
-def grep(pattern, filename):
-    return zgrep(pattern, filename, retcode=(0,1)).split('\n')[:-1]
 
 
 def cached_property(function):

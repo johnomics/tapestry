@@ -15,7 +15,7 @@ from sklearn.exceptions import ConvergenceWarning
 from Bio.SeqUtils import GC
 
 from .alignments import Alignments
-from .misc import grep, file_exists
+from .misc import file_exists
 
 # Define process_contig at top level rather than in class so it works with multiprocessing
 def process_contig(contig):
