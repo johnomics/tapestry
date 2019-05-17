@@ -138,7 +138,7 @@ class Assembly(AssemblyPlot):
             else:
                 log.info(f"Sampling {self.depth} times coverage of {len(self)/1000000:.1f} Mb assembly from >{self.minreadlength}bp reads in {self.readfile}")
 
-                with gzopen(self.readfile, 'rt') as all_reads, gzopen(self.filenames['sampled_reads'], 'wt', compresslevel=6) as sampled_reads, tqdm(total=self.depth) as pbar:
+                with gzopen(self.readfile, 'rt') as all_reads, gzopen(self.filenames['sampled_reads'], 'wt', compresslevel=6) as sampled_reads, tqdm(total=self.depth, leave=False) as pbar:
                     sampled_bases = read_count = times_coverage = 0
                     readset = []
 
@@ -147,21 +147,21 @@ class Assembly(AssemblyPlot):
                         if len(sequence) < self.minreadlength:
                             continue
 
-                        readset.append(f"@{title}\n{sequence}\n+\n{quality}")
+                        readset.append(f"@{title}\n{sequence}\n+\n{quality}\n")
 
                         read_count += 1
                         sampled_bases += len(sequence)
                         new_times_coverage = round(sampled_bases / len(self))
 
                         if new_times_coverage > times_coverage:
-                            print('\n'.join(readset), file=sampled_reads)
+                            print(''.join(readset), file=sampled_reads, end='')
                             readset = []
                             pbar.update()
                             times_coverage = new_times_coverage
 
                         if times_coverage == self.depth:
                             break
-                    print(readset, file=sampled_reads, end='')
+                    print(''.join(readset), file=sampled_reads, end='')
 
                 log.info(f"Wrote {read_count} reads ({sampled_bases} bases, {times_coverage} times coverage) to {self.filenames['sampled_reads']}")
                 if times_coverage < self.depth:

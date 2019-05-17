@@ -73,7 +73,7 @@ class Contig:
             'name': self.orig_name,
             'length': len(self),
             'gc': f"{self.gc:.2f}",
-            'median_read_depth': f"{self.median_read_depth:.1f}",
+            'median_read_depth': int(self.median_read_depth),
             'tel_start': self.tel_start,
             'tel_end': self.tel_end
         }
@@ -254,7 +254,7 @@ class Contig:
 
         empty_ploidys = [0] * len(self.read_depths)
         # Can't fit model with fewer windows than components
-        if len(self.read_depths) < components: 
+        if len(self.read_depths) < components or median_depth == 0: 
             return empty_ploidys
 
         model = mixture.BayesianGaussianMixture(n_components=components, max_iter=1000)
@@ -266,8 +266,6 @@ class Contig:
         warnings.resetwarnings()
 
         haploid_depth = median_depth / 2
-        if haploid_depth == 0:
-            return empty_ploidys
 
         ploidys = [int(round((float(model.means_[l]) / haploid_depth))) for l in labels]
 
