@@ -20,6 +20,15 @@
       #assembly_section { 
           display: flex; 
       }
+      body {
+          padding-top: 50px;
+      }
+      :target::before {
+        content: "";
+        display: block;
+        height: 50px; /* fixed header height*/
+        margin: -50px 0 0; /* negative fixed header height */
+      }
       .xaxis { font-size: 14px; }
       .yaxis { font-size: 14px; }
       .xaxislabel { font-size: 16px; font-weight: bold; }
@@ -30,8 +39,6 @@
 
 <body>
   <div class="mainpage">
-    <h1 id="page_title">Tapestry Report</h1>
-
     <noscript>
       <div class="alert alert-danger">
         <h4>JavaScript Disabled</h4>
@@ -43,7 +50,30 @@
       </div>
     </noscript>
 
+    <nav class="navbar navbar-expand-sm fixed-top navbar-dark bg-primary">
+      <a class="navbar-brand" href="#">Tapestry Report</a>
+      <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#collapsingNavbar">
+          <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="navbar-collapse collapse" id="collapsingNavbar">
+        <ul class="navbar-nav">
+          <li class="nav-item active">
+            <a class="nav-link" href="#assembly_ref">Assembly</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#contigs_ref">Contigs</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#reads_ref">Reads</a>
+          </li>
+        </ul>
+      </div>
+    </nav>
+
+
+    
     <div>
+      <a name="assembly_ref"></a>
       <table id="assembly_table" data-sort-name="cluster" data-sort-order="asc">
         <thead>
           <tr>
@@ -56,7 +86,8 @@
         </thead>
       </table>
     </div>
-
+    
+    <a name="contigs_ref"></a>
     <div id="assembly_section">
         <div id="assembly_plot"></div>
         <table id="contig_table">
@@ -75,6 +106,7 @@
         </table>
     </div>
 
+    <a name="reads_ref"></a>
     <div id="read_alignment_plot"></div>
 
   </div>
@@ -510,7 +542,7 @@ for (var key in read_alignments) {
 
 var max_cluster = d3.max(contigs.map(c => c.cluster))
 var max_contig_name_length = d3.max(contigs.map(c => c.name.length))
-var dim = { margin: {top: 100, right: 80, bottom: 50, left: max_contig_name_length * 10 } };
+var dim = { margin: {top: 100, right: 80, bottom: 70, left: max_contig_name_length * 10 } };
 
 dim.width = 1000 - dim.margin.left - dim.margin.right;
 
@@ -584,9 +616,9 @@ yaxis = d3.axisLeft(reads_dim.yscale)
 reads_svg = d3.select("#read_alignment_plot")
               .append("svg")
               .attr("width", dim.width + dim.margin.left + dim.margin.right)
-              .attr("height", reads_dim.height + dim.margin.top + dim.margin.bottom)
+              .attr("height", reads_dim.height + 20 + dim.margin.bottom)
               .append("g")
-              .attr("transform", "translate(" + dim.margin.left + "," + (dim.margin.top + reads_dim.height) + ")")
+              .attr("transform", "translate(" + dim.margin.left + "," + (20 + reads_dim.height) + ")")
               .call(xaxis)
               .attr("class", "xaxis")
               .append("g")
@@ -685,6 +717,11 @@ $('#contig_table').bootstrapTable({
 
 update_assembly(sort=true);
 $('#contig_table').bootstrapTable('check', 0);
+
+$(".nav-item").on("click", function(){
+   $(".navbar-nav").find(".active").removeClass("active");
+   $(this).addClass("active");
+});
 </script>
 </body>
 </html>
