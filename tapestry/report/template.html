@@ -22,6 +22,9 @@
       body {
           padding-top: 50px;
       }
+      .alert {
+          display: none;
+      }
       :target::before {
         content: "";
         display: block;
@@ -85,6 +88,16 @@
         </thead>
       </table>
     </div>
+
+    <input type="file" id="assembly_csv" name="assembly_csv" accept=".csv, text/csv" />
+    <div class="alert alert-warning badcsv" role="alert">
+        Contigs in CSV file do not match contigs in report. Please choose a CSV file that matches this assembly.
+        <button type="button" class="close" aria-hidden="true">&times;</button>
+    </div>
+    <div class="alert alert-success goodcsv" role="alert">
+        Contigs loaded successfully!
+        <button type="button" class="close" aria-hidden="true">&times;</button>
+    </div>
     
     <a name="contigs_ref"></a>
     <div id="assembly_section">
@@ -120,6 +133,7 @@
 {{ include_file('static/bootstrap-table.min.js') }}
 {{ include_file('static/bootstrap-table-export.min.js') }}
 {{ include_file('static/bootstrap-table-editable.min.js') }}
+{{ include_file('static/papaparse.min.js') }}
 
 // Use hacked version for Bootstrap 4 from https://github.com/wenzhixin/bootstrap-table/issues/4258
 {{ include_file('static/bootstrap-table-multiple-sort.js') }}
@@ -702,7 +716,6 @@ function include_checkbox(value) {
 
 function DoCellData(cell, rowIndex, colIndex, htmlData) {
     var retVal = htmlData;
-    console.log(htmlData);
     if (htmlData.includes('checkbox')) {
         if (htmlData.includes('checked')) {
             retVal = "yes";
@@ -742,6 +755,71 @@ $('#contig_table').bootstrapTable('check', 0);
 $(".nav-item").on("click", function(){
    $(".navbar-nav").find(".active").removeClass("active");
    $(this).addClass("active");
+});
+
+$('.close').click(function() {
+    $('.alert').hide();
+})
+
+$('#assembly_csv').change(function() {
+    $('.alert').hide();
+    csv_file = this.files[0];
+    Papa.parse(csv_file, {
+        header: true,
+        dynamicTyping: true,
+        skipEmptyLines: true,
+        transformHeader: function(hf) {
+            if (hf === 'Contig') return 'name';
+            if (hf === 'Length') return 'length';
+            if (hf === 'GC %') return 'gc';
+            if (hf === 'Read Depth') return 'median_read_depth';
+            if (hf === 'Cluster') return 'cluster';
+            if (hf === 'Keep') return 'included';
+            if (hf === 'Notes') return 'notes';
+            return hf;
+        },
+        transform: function(value, column) {
+            if (column === 'included') {
+                if (value === 'yes') return 1;
+                if (value === 'no') return 0;
+                return true;
+            };
+            if (column === 'notes') {
+                if (value === 'Empty') return '';
+            }
+            return value;
+        },
+        complete: function(results) {
+            csv_names = results.data.map(d => d.name)
+            csv_names_sorted = csv_names.slice(0).sort();
+            check_contig_names = contigs.map(d => d.name).sort();
+            
+            // Check to make sure contig names match
+            for (var i=0; i < check_contig_names.length; i++) {
+                if (check_contig_names[i] !== csv_names_sorted[i]) {
+                    $('.badcsv').show();
+                    return;
+                }
+            }
+            
+            // Names match, so sort contigs by csv_names
+            contigs = contigs.sort(function(a,b) {
+                return csv_names.indexOf(a.name) - csv_names.indexOf(b.name);
+            })
+            
+            // contigs and results now in same order, so update cluster, included and notes
+            for (var i=0; i < results.data.length; i++) {
+                contigs[i].cluster = results.data[i].cluster;
+                contigs[i].included = results.data[i].included;
+                contigs[i].notes = results.data[i].notes;
+            }
+
+            // Update table and assembly and show alert
+            $('#contig_table').bootstrapTable("load", contigs);
+            update_assembly();
+            $('.goodcsv').show();
+        }
+    })
 });
 </script>
 </body>
