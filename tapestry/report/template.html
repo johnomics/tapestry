@@ -176,9 +176,18 @@ for (var contig_name_long in contig_alignments) {
     contig_matches = [...new Set(contig_alignments[contig_name_long].map(d => contig_id_short[d[2]]))]
     contig_matches.forEach(function(contig_match) {
         if (contig_name_short != contig_match) {
-            contig_links[contig_name_short].push({source: {"x":-1, "y": contig_name_short}, target: {"x":0, "y": contig_match}});
+            contig_links[contig_name_short].push({
+                source: {"x":-1, "y": contig_name_short},
+                target: {"x":0, "y": contig_match},
+                self: false
+            });
         }
     })
+    contig_links[contig_name_short].push({
+        source: {"x":-1, "y": contig_name_short},
+        target: {"x":0, "y": contig_name_short},
+        self: true
+    });
 }
 
 var contig_coverage_prop = {};
@@ -543,9 +552,10 @@ function show_contig_alignments(contig, assembly_svg) {
                     .y(function(d) { return assembly_dim.yscale(d.y) + assembly_dim.yscale.bandwidth()/2; })
         )
         .style("stroke-opacity", function(d) {
-            return 0.1 + 0.9*contig_coverage_prop[contig_short_id[contig]][contig_short_id[d.target.y]];
+            return d.self ? 1 : 0.1 + 0.9*contig_coverage_prop[contig_short_id[contig]][contig_short_id[d.target.y]];
         })
-        .style("stroke", "purple")
+        .style("stroke", function(d) { return d.self ? "black" : "purple"; })
+        .style("stroke-dasharray", function(d) { return d.self ? "2,2" : "none" });
 
     assembly_svg.selectAll("rect.contig_alignment.self")
         .data(contig_alignments[contig_short_long[contig]])
