@@ -34,13 +34,13 @@ filenames = {
 
 class Assembly():
 
-    def __init__(self, assemblyfile, readfile, telomeres, outdir, cores, depth, minreadlength, windowsize):
+    def __init__(self, assemblyfile, readfile, telomeres, outdir, cores, coverage, minreadlength, windowsize):
         self.assemblyfile = assemblyfile
         self.readfile = readfile
         self.telomeres = [motifs.create([Seq(t[0])]) for t in telomeres] if telomeres else None
         self.outdir = outdir
         self.cores = cores
-        self.depth = depth
+        self.coverage = coverage
         self.minreadlength = minreadlength
         self.windowsize = windowsize
 
@@ -116,13 +116,13 @@ class Assembly():
         if file_exists(self.filenames['sampled_reads']):
             log.info(f"Will use existing {self.filenames['sampled_reads']}")
         else:
-            if self.depth == 0:
+            if self.coverage == 0:
                 os.symlink(os.path.abspath(self.readfile), self.filenames['sampled_reads'])
-                log.info(f"Using all reads as depth option is {self.depth}")
+                log.info(f"Using all reads as coverage option is coverage")
             else:
-                log.info(f"Sampling {self.depth} times coverage of {len(self)/1000000:.1f} Mb assembly from >{self.minreadlength}bp reads in {self.readfile}")
+                log.info(f"Sampling {self.coverage} times coverage of {len(self)/1000000:.1f} Mb assembly from >{self.minreadlength}bp reads in {self.readfile}")
 
-                with gzopen(self.readfile, 'rt') as all_reads, gzopen(self.filenames['sampled_reads'], 'wt', compresslevel=6) as sampled_reads, tqdm(total=self.depth, leave=False) as pbar:
+                with gzopen(self.readfile, 'rt') as all_reads, gzopen(self.filenames['sampled_reads'], 'wt', compresslevel=6) as sampled_reads, tqdm(total=self.coverage, leave=False) as pbar:
                     sampled_bases = read_count = times_coverage = 0
                     readset = []
 
@@ -143,13 +143,13 @@ class Assembly():
                             pbar.update()
                             times_coverage = new_times_coverage
 
-                        if times_coverage == self.depth:
+                        if times_coverage == self.coverage:
                             break
                     print(''.join(readset), file=sampled_reads, end='')
 
                 log.info(f"Wrote {read_count} reads ({sampled_bases} bases, {times_coverage} times coverage) to {self.filenames['sampled_reads']}")
-                if times_coverage < self.depth:
-                    log.warning(f"Only found {times_coverage} times coverage in reads longer than {self.minreadlength}, not {self.depth} times; consider reducing minimum read length (-l)")
+                if times_coverage < self.coverage:
+                    log.warning(f"Only found {times_coverage} times coverage in reads longer than {self.minreadlength}, not {self.coverage} times; consider reducing minimum read length (-l)")
 
 
     def make_bam(self, aligntype):

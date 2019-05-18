@@ -67,7 +67,7 @@ def get_weave_args(arglist=[]):
            "weave: assess quality of one genome assembly",
            ["'-a', '--assembly', help='filename of assembly in FASTA format', type=str",
             "'-r', '--reads', help='filename of reads in FASTQ format (can be gzipped)', type=str",
-            "'-d', '--depth', help='read depth to subsample from FASTQ file (default 50)', type=int, default=50",
+            "'-d', '--depth', help='genome coverage to subsample from FASTQ file (default 50)', type=int, default=50",
             "'-l', '--length', help='minimum read length to retain when subsampling (default 10000)', type=int, default=10000",
             "'-t', '--telomere', help='telomere sequence to search for', type=str, action='append', nargs='+'",
             "'-w', '--windowsize', help='window size for ploidy calculations (default 10000)', type=int, default=10000",
@@ -80,16 +80,18 @@ def get_weave_args(arglist=[]):
     return args
 
 
-def setup_output(outdir):
-    try:
-        os.mkdir(outdir)
-        log.info(f"Created output directory {outdir}")
-    except OSError as exc:
-        if exc.errno == errno.EEXIST:
-            log.warning(f"Output directory {outdir} found, will use existing analysis files if present and up-to-date, but overwrite reports")
-        else:
-            raise
-
+def weave_welcome(arglist=[]):
+    versions()
+    
+    print("\nWelcome to Tapestry!\n")
+    print(f"Assembly to validate\t{arglist.assembly}")
+    print(f"Reads to sample from\t{arglist.reads}")
+    print(f"Coverage to sample\t{arglist.depth}")
+    print(f"Minimum read length\t{arglist.length}")
+    print(f"Telomere sequence(s)\t{' '.join(arglist.telomere[0])}")
+    print(f"Ploidy window size\t{arglist.windowsize}")
+    print(f"Output directory\t{arglist.output}")
+    print()
 
 
 def versions():
@@ -108,6 +110,17 @@ def versions():
     version_message += f"samtools\t{samtools_version().rstrip()}\t{samtools}\n"
 
     print(version_message.expandtabs(15))
+
+
+def setup_output(outdir):
+    try:
+        os.mkdir(outdir)
+        log.info(f"Created output directory {outdir}")
+    except OSError as exc:
+        if exc.errno == errno.EEXIST:
+            log.warning(f"Output directory {outdir} found, will use existing analysis files if present and up-to-date, but overwrite reports")
+        else:
+            raise
 
 
 def file_exists(filename, deps=[]):

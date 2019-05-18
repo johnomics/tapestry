@@ -4,14 +4,14 @@ import sys
 import logging as log
 
 from tapestry.assembly import Assembly
-from tapestry.misc import get_weave_args, versions
+from tapestry.misc import get_weave_args, weave_welcome
 
 
 if __name__ == '__main__':
 
     args = get_weave_args(sys.argv[1:]) # Pass in arguments so this function can be unit tested
 
-    versions()
+    weave_welcome(args)
 
     assembly = Assembly(args.assembly, args.reads, args.telomere, args.output, args.cores, args.depth, args.length, args.windowsize)
 
