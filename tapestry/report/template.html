@@ -141,6 +141,7 @@ var contig_short_long = {};
 var contig_id_short = {};
 var contig_short_id = {};
 var contig_lengths = {};
+var max_contig_length = 0;
 contigs.forEach(function(contig) {
     contig.included = 1;
     contig.notes = '';
@@ -149,6 +150,9 @@ contigs.forEach(function(contig) {
     contig_id_short[contig.id] = contig.name;
     contig_short_id[contig.name] = contig.id;
     contig_lengths[contig.id] = contig.length;
+    if (contig.length > max_contig_length) {
+        max_contig_length = contig.length;
+    }
 })
 
 var contig_links = {};
@@ -200,6 +204,10 @@ function gc_formatter(value) {
 
 function depth_formatter(value) {
     return '<div style="color: ' + assembly_dim.depthscale(0.35 + (0.65*value)/median_depth) + '">' + value + '</div>'
+}
+
+function isEmpty(obj) {
+  return Object.keys(obj).length === 0;
 }
 
 function calculate_assembly_stats(contigs, label) {
@@ -273,6 +281,70 @@ function contig_text_unhover() {
     reads_svg.selectAll("text.alignment.text").remove()
 }
 
+function build_reads_plot(read_alignments, dim, reads_dim, assembly_dim, ploidy_depths) {
+
+    reads_svg = d3.select("#read_alignment_plot")
+                  .append("svg")
+                  .attr("width", dim.width + dim.margin.left + dim.margin.right)
+    
+    if (isEmpty(read_alignments)) {
+        reads_svg
+            .attr("height", 20)
+            .append("text")
+            .attr("y", 15)
+            .attr("x", 10)
+            .attr("fill", "black")
+            .text("Read alignments are not available in this report (re-run Tapestry without the -n option to include them).")
+
+        return reads_svg;
+    }
+
+    reads_svg = reads_svg
+        .attr("height", reads_dim.height + 20 + dim.margin.bottom)
+        .append("g")
+        .attr("transform", "translate(" + dim.margin.left + "," + (20 + reads_dim.height) + ")")
+        .call(xaxis)
+        .attr("class", "xaxis")
+        .append("g")
+        .attr("transform", "translate(0,-" + reads_dim.height + ")")
+        .call(yaxis)
+        .attr("class", "yaxis")
+    
+    reads_svg.append("text")
+        .attr("class", "yaxislabel")
+        .attr("transform", "rotate(-90)")
+        .attr("y", 0 - (dim.margin.left * 0.6))
+        .attr("x",0 - (reads_dim.height / 2))
+        .attr("fill", "black")
+        .style("text-anchor", "middle")
+        .text("Reads"); 
+
+    reads_svg.selectAll("line.ploidy")
+        .data(ploidy_depths.filter(d => d.name != "repeat"))
+        .enter()
+        .append("line")
+        .attr("class", "ploidy")
+        .attr("x1", dim.xscale.range()[0]+1) // +1 to avoid axis
+        .attr("x2", dim.xscale.range()[1])
+        .attr("y1", function(d) { return reads_dim.yscale(d.depth) })
+        .attr("y2", function(d) { return reads_dim.yscale(d.depth) })
+        .style("stroke", function(d, i) { return assembly_dim.ploidyscale((1+i*0.8)/5); })
+        .style("stroke-width", 2)
+    
+    reads_svg.selectAll("text.ploidy")
+        .data(ploidy_depths)
+        .enter()
+        .append("text")
+        .attr("x", dim.xscale.range()[1] + 10 )
+        .attr("y", function(d) { return reads_dim.yscale(d.depth)+2 })
+        .style("fill", function(d, i) { return assembly_dim.ploidyscale((1+i*0.8)/5) })
+        .style("text-anchor", "start")
+        .text(function(d) { return d.name })
+    
+    return reads_svg;
+
+}
+
 function plot_read_alignments(alignments, dim, assembly_dim, reads_dim, svg, contig) {
 
     // contig_read_alignments:
@@ -283,6 +355,10 @@ function plot_read_alignments(alignments, dim, assembly_dim, reads_dim, svg, con
     //  4 mapping quality
     //  5 y position on plot
 
+    if (isEmpty(read_alignments)) {
+        return;
+    }
+    
     svg.selectAll("text.xaxislabel").remove()
     
     svg.append("text")
@@ -528,13 +604,13 @@ function build_contig(contig, dim, assembly_dim, windowsize) {
 }
 
 var max_read_depth = 0;
-var min_read_pos = 0;
-var max_read_pos = 0;
+var min_x_pos = -2000;
+var max_x_pos = max_contig_length + 2000;
 
-for (var key in read_alignments) {
+for (var key in read_alignments) { // If read_alignments is empty, this will be skipped
     max_read_depth = check_max(max_read_depth, read_alignments[key], 5);
-    min_read_pos   = check_min(min_read_pos, read_alignments[key], 0);
-    max_read_pos   = check_max(max_read_pos, read_alignments[key], 3);
+    min_x_pos   = check_min(min_x_pos, read_alignments[key], 0);
+    max_x_pos   = check_max(max_x_pos, read_alignments[key], 3);
 }
 
 var max_cluster = d3.max(contigs.map(c => c.cluster))
@@ -544,9 +620,9 @@ var dim = { margin: {top: 100, right: 80, bottom: 70, left: max_contig_name_leng
 dim.width = 1000 - dim.margin.left - dim.margin.right;
 
 // Pad X axis with 2% of the maximum length, for contig alignment curves
-var leftpad = (max_read_pos-min_read_pos) * 0.02
+var leftpad = (max_x_pos-min_x_pos) * 0.02
 dim.xscale = d3.scaleLinear()
-               .domain([min_read_pos-leftpad, max_read_pos])
+               .domain([min_x_pos-leftpad, max_x_pos])
                .range([0, dim.width]);
 
 var xaxis = d3.axisBottom(dim.xscale);
@@ -609,51 +685,8 @@ reads_dim.yscale = d3.scaleLinear()
                      .range([reads_dim.height, 0]);
 
 yaxis = d3.axisLeft(reads_dim.yscale)
-                     
-reads_svg = d3.select("#read_alignment_plot")
-              .append("svg")
-              .attr("width", dim.width + dim.margin.left + dim.margin.right)
-              .attr("height", reads_dim.height + 20 + dim.margin.bottom)
-              .append("g")
-              .attr("transform", "translate(" + dim.margin.left + "," + (20 + reads_dim.height) + ")")
-              .call(xaxis)
-              .attr("class", "xaxis")
-              .append("g")
-              .attr("transform", "translate(0,-" + reads_dim.height + ")")
-              .call(yaxis)
-              .attr("class", "yaxis")
 
-reads_svg.append("text")
-         .attr("class", "yaxislabel")
-         .attr("transform", "rotate(-90)")
-         .attr("y", 0 - (dim.margin.left * 0.6))
-         .attr("x",0 - (reads_dim.height / 2))
-         .attr("fill", "black")
-         .style("text-anchor", "middle")
-         .text("Reads"); 
-
-reads_svg.selectAll("line.ploidy")
-   .data(ploidy_depths.filter(d => d.name != "repeat"))
-   .enter()
-   .append("line")
-   .attr("class", "ploidy")
-   .attr("x1", dim.xscale.range()[0]+1) // +1 to avoid axis
-   .attr("x2", dim.xscale.range()[1])
-   .attr("y1", function(d) { return reads_dim.yscale(d.depth) })
-   .attr("y2", function(d) { return reads_dim.yscale(d.depth) })
-   .style("stroke", function(d, i) { return assembly_dim.ploidyscale((1+i*0.8)/5); })
-   .style("stroke-width", 2)
-
-reads_svg.selectAll("text.ploidy")
-   .data(ploidy_depths)
-   .enter()
-   .append("text")
-   .attr("x", dim.xscale.range()[1] + 10 )
-   .attr("y", function(d) { return reads_dim.yscale(d.depth)+2 })
-   .style("fill", function(d, i) { return assembly_dim.ploidyscale((1+i*0.8)/5) })
-   .style("text-anchor", "start")
-   .text(function(d) { return d.name })
-
+reads_svg = build_reads_plot(read_alignments, dim, reads_dim, assembly_dim, ploidy_depths)
 
 function update_assembly(sort=false) {
     if (sort) {

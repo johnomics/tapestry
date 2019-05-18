@@ -34,7 +34,7 @@ filenames = {
 
 class Assembly():
 
-    def __init__(self, assemblyfile, readfile, telomeres, outdir, cores, coverage, minreadlength, windowsize):
+    def __init__(self, assemblyfile, readfile, telomeres, outdir, cores, coverage, minreadlength, windowsize, noreadoutput):
         self.assemblyfile = assemblyfile
         self.readfile = readfile
         self.telomeres = [motifs.create([Seq(t[0])]) for t in telomeres] if telomeres else None
@@ -43,6 +43,7 @@ class Assembly():
         self.coverage = coverage
         self.minreadlength = minreadlength
         self.windowsize = windowsize
+        self.noreadoutput = noreadoutput
 
         setup_output(self.outdir)
         self.filenames = {file_key:f"{self.outdir}/{filenames[file_key]}" for file_key in filenames}
@@ -64,6 +65,10 @@ class Assembly():
         self.get_ploidys()
 
         self.cluster_contigs()
+
+
+    def __len__(self):
+        return sum([len(self.contigs[c]) for c in self.contigs])
 
 
     @cached_property
@@ -269,11 +274,15 @@ class Assembly():
             for c2 in self.contigs[c1].contig_coverage:
                 contig_coverage[self.contigs[c1].id][self.contigs[c2].id] = self.contigs[c1].contig_coverage[c2]
 
+        read_alignments = {}
+        if not self.noreadoutput:
+            read_alignments = {c:self.contigs[c].read_alignments for c in self.contigs}
+
         with open(f"{self.outdir}/tapestry_report.html", 'wt') as html_report:
             print(template.render(
                     windowsize = self.windowsize,
                     contigs = json.dumps([self.contigs[c].json() for c in self.contigs]),
-                    read_alignments = json.dumps({c:self.contigs[c].read_alignments for c in self.contigs}),
+                    read_alignments = json.dumps(read_alignments),
                     contig_alignments = json.dumps(contig_alignments),
                     contig_coverage = json.dumps(contig_coverage),
                     ploidys = json.dumps({c:self.contigs[c].ploidys for c in self.contigs}),

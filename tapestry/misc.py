@@ -71,6 +71,7 @@ def get_weave_args(arglist=[]):
             "'-l', '--length', help='minimum read length to retain when subsampling (default 10000)', type=int, default=10000",
             "'-t', '--telomere', help='telomere sequence to search for', type=str, action='append', nargs='+'",
             "'-w', '--windowsize', help='window size for ploidy calculations (default 10000)', type=int, default=10000",
+            "'-n', '--noreadoutput', help='do not output read alignments in report (default False)', action='store_true'",
             "'-o', '--output', help='directory to write output, default weave_output', type=str, default='weave_output'"])
 
     if not args.assembly:
