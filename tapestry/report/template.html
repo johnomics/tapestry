@@ -60,7 +60,7 @@
       <div class="navbar-collapse collapse" id="collapsingNavbar">
         <ul class="navbar-nav">
           <li class="nav-item active">
-            <a class="nav-link" href="#assembly_ref">Assembly</a>
+            <a class="nav-link" href="#info_ref">Assembly</a>
           </li>
           <li class="nav-item">
             <a class="nav-link" href="#contigs_ref">Contigs</a>
@@ -74,20 +74,26 @@
 
 
     
-    <div>
-      <a name="assembly_ref"></a>
-      <table id="assembly_table" data-sort-name="cluster" data-sort-order="asc">
-        <thead>
-          <tr>
-            <th data-field="assembly" data-sortable="true">Contig set</th>
-            <th data-field="contigs" data-sortable="true">Contig number</th>
-            <th data-field="length" data-sortable="true">Length (bp)</th>
-            <th data-field="n50_number" data-sortable="true">N50 number</th>
-            <th data-field="n50_length" data-sortable="true">N50 length</th>
-          </tr>
-        </thead>
-      </table>
-    </div>
+    <a name="info_ref"></a>
+    <table id="options_table" data-show-header="false">
+      <thead>
+        <tr>
+          <th data-field="option">Option</th>
+          <th data-field="value">Value</th>
+        </tr>
+      </thead>
+    </table>
+    <table id="assembly_table" data-sort-name="cluster" data-sort-order="asc">
+      <thead>
+        <tr>
+          <th data-field="assembly" data-sortable="true">Contig set</th>
+          <th data-field="contigs" data-sortable="true">Contig number</th>
+          <th data-field="length" data-sortable="true">Length (bp)</th>
+          <th data-field="n50_number" data-sortable="true">N50 number</th>
+          <th data-field="n50_length" data-sortable="true">N50 length</th>
+        </tr>
+      </thead>
+    </table>
 
     <input type="file" id="assembly_csv" name="assembly_csv" accept=".csv, text/csv" />
     <div class="alert alert-warning badcsv" role="alert">
@@ -141,6 +147,7 @@
 {{ include_file('static/d3.min.js') }}
 
 var windowsize = {{ windowsize }};
+var options = {{ options }};
 var median_depth = {{ median_depth }};
 var contigs = {{ contigs }};
 var read_alignments = {{ read_alignments }};
@@ -737,6 +744,7 @@ function DoCellData(cell, rowIndex, colIndex, htmlData) {
 }
 
 $.fn.editable.defaults.mode = 'inline';
+$('#options_table').bootstrapTable({data: options});
 $('#assembly_table').bootstrapTable({data: calculate_stats(contigs)});
 $('#contig_table').bootstrapTable({
     editable: true,

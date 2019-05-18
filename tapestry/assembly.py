@@ -1,4 +1,4 @@
-import os, sys, json
+import os, sys, json, datetime
 import logging as log
 import networkx as nx
 
@@ -19,6 +19,7 @@ from .contig import Contig, process_contig, get_ploidy
 from .alignments import Alignments
 from .misc import cached_property, setup_output, include_file, report_folder, tapestry_tqdm, file_exists
 from .misc import minimap2, samtools
+from ._version import __version__
 
 filenames = {
     'assembly'         : 'assembly.fasta', 
@@ -37,6 +38,7 @@ class Assembly():
     def __init__(self, assemblyfile, readfile, telomeres, outdir, cores, coverage, minreadlength, windowsize, noreadoutput):
         self.assemblyfile = assemblyfile
         self.readfile = readfile
+        self.telomere_seqs = ' '.join(telomeres[0]) if telomeres else ''
         self.telomeres = [motifs.create([Seq(t[0])]) for t in telomeres] if telomeres else None
         self.outdir = outdir
         self.cores = cores
@@ -85,6 +87,20 @@ class Assembly():
     def median_depth(self):
         return self.read_depths.median() if self.read_depths is not None else 0
 
+
+    def options(self):
+        return [
+            {'option': 'Tapestry Version',         'value': __version__        },
+            {'option': 'Report generation time',   'value': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') },
+            {'option': 'Assembly file',            'value': self.assemblyfile  },
+            {'option': 'Reads file',               'value': self.readfile      },
+            {'option': 'Telomeres',                'value': self.telomere_seqs },
+            {'option': 'Output directory',         'value': self.outdir        },
+            {'option': 'Genome coverage',          'value': self.coverage      },
+            {'option': 'Minimum read length',      'value': self.minreadlength },
+            {'option': 'Window size',              'value': self.windowsize    },
+            {'option': 'Read alignments included', 'value': self.noreadoutput  }
+        ]
 
     def load_assembly(self):
         contigs = {}
@@ -281,6 +297,7 @@ class Assembly():
         with open(f"{self.outdir}/tapestry_report.html", 'wt') as html_report:
             print(template.render(
                     windowsize = self.windowsize,
+                    options = json.dumps(self.options()),
                     contigs = json.dumps([self.contigs[c].json() for c in self.contigs]),
                     read_alignments = json.dumps(read_alignments),
                     contig_alignments = json.dumps(contig_alignments),
