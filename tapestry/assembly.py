@@ -17,7 +17,7 @@ from jinja2 import Environment, FileSystemLoader
 
 from .contig import Contig, process_contig, get_ploidy
 from .alignments import Alignments
-from .misc import flatten, cached_property, setup_output, include_file, report_folder, tapestry_tqdm, file_exists
+from .misc import cached_property, setup_output, include_file, report_folder, tapestry_tqdm, file_exists
 from .misc import minimap2, samtools
 
 filenames = {
@@ -25,9 +25,9 @@ filenames = {
     'sampled_reads'    : 'reads.fastq.gz', 
     'reads_bam'        : 'reads_assembly.bam',
     'reads_index'      : 'reads_assembly.bam.bai',
-    'alignments'       : 'alignments.db',
     'contigs_bam'      : 'contigs_assembly.bam',
-    'contigs_index'    : 'contigs_assembly.bam.bai'
+    'contigs_index'    : 'contigs_assembly.bam.bai',
+    'alignments'       : 'alignments.db'
 }
 
 
@@ -66,10 +66,6 @@ class Assembly():
         self.cluster_contigs()
 
 
-    def __len__(self):
-        return sum([len(self.contigs[c]) for c in self.contigs])
-
-
     @cached_property
     def gc(self):
         return mean([float(self.contigs[c].gc) for c in self.contigs])
@@ -83,16 +79,6 @@ class Assembly():
     @cached_property
     def median_depth(self):
         return self.read_depths.median() if self.read_depths is not None else 0
-
-
-    @cached_property
-    def unique_bases(self):
-        return sum([self.contigs[c].unique_bases for c in self.contigs])
-
-
-    @cached_property
-    def unique_pc(self):
-        return f"{self.unique_bases/len(self) * 100:.0f}"
 
 
     def load_assembly(self):
@@ -259,22 +245,15 @@ class Assembly():
 
 
     def contig_report(self):
-        log.info(f"Generating contig report")
+        log.info(f"Generating contig details")
 
         try:
-            with open(f"{self.outdir}/contig_report.txt", 'wt') as report_file, \
-                 open(f"{self.outdir}/redundancy.txt", 'wt') as redundancy_file:
+            with open(f"{self.outdir}/contig_details.txt", 'wt') as report_file:
+                print("Cluster\tContig\tLength\tGC%\tMedianReadDepth\tStartTelomeres\tEndTelomeres\tStartMeanReadOverhangBases\tEndMeanReadOverhangBases\tUniqueBases\tUnique%\tCompleteness\tPloidys\tStartConnectors\tEndConnectors", file=report_file)
                 for contigname in sorted(self.contigs, key=lambda c: (self.contigs[c].cluster, -len(self.contigs[c]))):
                     print(self.contigs[contigname].report(self.gc), file=report_file)
-                    print(self.contigs[contigname].redundancy_report(), file=redundancy_file)
         except IOError:
-            log.error(f"Could not write contig reports")
-
-
-    def assembly_report(self):
-        log.info(f"Generating assembly report")
-        with open(f"{self.outdir}/assembly_report.txt", 'wt') as report_file:
-            print(f"{self.assemblyfile}\t{len(self)}\t{self.gc:.1f}\t{self.median_depth:.0f}\t{self.unique_bases}\t{self.unique_pc}", file=report_file)
+            log.error(f"Could not write contig report")
 
 
     def html_report(self):
@@ -304,7 +283,5 @@ class Assembly():
 
 
     def report(self):
-        log.info(f"Generating reports")
         self.contig_report()
-        self.assembly_report()
         self.html_report()

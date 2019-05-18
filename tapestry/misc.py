@@ -115,12 +115,10 @@ def file_exists(filename, deps=[]):
              all([os.stat(filename).st_mtime > os.stat(dep).st_mtime for dep in deps])
            )
 
-def flatten(l):
-    return list(itertools.chain.from_iterable(l))
-
 
 def cached_property(function):
     return property(lru_cache()(function))
+
 
 def include_file(filename):
     try:

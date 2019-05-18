@@ -1,11 +1,8 @@
 import os, re, warnings
 from statistics import mean
-from math import sin, cos
-from collections import namedtuple, defaultdict
+from collections import defaultdict
 
 import numpy as np
-
-import pysam
 
 from intervaltree import Interval, IntervalTree
 
@@ -15,7 +12,7 @@ from sklearn.exceptions import ConvergenceWarning
 from Bio.SeqUtils import GC
 
 from .alignments import Alignments
-from .misc import file_exists
+
 
 # Define process_contig at top level rather than in class so it works with multiprocessing
 def process_contig(contig):
@@ -47,10 +44,6 @@ class Contig:
         report += f"\t{len(self)}"
         report += f"\t{self.gc:.1f}"
         report += f"\t{self.median_read_depth:.1f}"
-        report += f"\t{self.mean_read_depth:.1f}"
-        report += f"\t{self.aligned_primary_pc:.1f}"
-        report += f"\t{self.aligned_all_pc:.1f}"
-        report += f"\t{self.mean_contig_depth:.1f}"
         report += f"\t{self.tel_start}"
         report += f"\t{self.tel_end}"
         report += f"\t{self.mean_start_overhang}"
@@ -87,13 +80,6 @@ class Contig:
         return len(self) < len(other)
 
 
-    def redundancy_report(self):
-        regions = ""
-        for region in self.region_depths:
-            regions += f"{self.name}\t{region.begin}\t{region.end}\t{region.end-region.begin}\t{region.data}\n"
-        return regions.rstrip()
-
-
     def contig_alignments_json(self):
         plot_row_ends = []
         alignments = []
@@ -113,8 +99,6 @@ class Contig:
         self.gc = self.get_gc()
         self.read_depths = self.alignments.depths('read', self.name)
         self.contig_depths = self.alignments.depths('contig', self.name)
-        self.mean_contig_depth = self.mean_depth(self.contig_depths)
-        self.mean_read_depth = self.mean_depth(self.read_depths)
         self.median_read_depth = self.median_depth(self.read_depths)
         self.contig_alignments, self.contig_coverage = self.get_contig_alignments()
         self.mean_start_overhang, self.mean_end_overhang = self.get_read_overhangs()
@@ -123,7 +107,6 @@ class Contig:
         self.unique_pc = self.get_unique_pc()
         self.tel_start, self.tel_end = self.num_telomeres()
         self.left_connectors, self.right_connectors = self.get_connectors()
-        self.aligned_primary_pc, self.aligned_all_pc = self.get_read_alignment_stats()
         self.read_alignments = self.plot_read_alignments()
 
         # Alignments work is done; they cannot be pickled, so clean up before return
@@ -161,10 +144,6 @@ class Contig:
         return GC(self.rec.seq)
 
 
-    def mean_depth(self, depths):
-        return depths['depth'].mean() if depths is not None else 0
-
-
     def median_depth(self, depths):
         return depths['depth'].median() if depths is not None else 0
 
@@ -189,27 +168,6 @@ class Contig:
                     start_matches += len(list(s.instances.search(self.rec[:1000].seq)))
                     end_matches   += len(list(s.instances.search(self.rec[-1000:].seq)))
         return start_matches, end_matches
-
-
-    def get_read_alignment_stats(self):
-        
-        aligned_primary_bases = all_primary_bases = aligned_non_primary_bases = 0
-
-        count_bases = self.alignments.get_contig_read_counts(self.name)
-        if count_bases is not None:
-            aligned_non_primary_bases = count_bases.loc['secondary','aligned_length'] + count_bases.loc['supplementary', 'aligned_length']
-            all_primary_bases = count_bases.loc['primary', 'read_length']
-            aligned_primary_bases = count_bases.loc['primary', 'aligned_length']
-
-        all_aligned_bases = aligned_primary_bases + aligned_non_primary_bases
-        
-        aligned_primary_pc = aligned_all_pc = 0
-        if all_primary_bases > 0:
-            aligned_primary_pc = aligned_primary_bases/all_primary_bases*100
-        if all_aligned_bases > 0:
-            aligned_all_pc = aligned_primary_bases/all_aligned_bases*100
-
-        return aligned_primary_pc, aligned_all_pc
 
 
     def get_contig_alignments(self):

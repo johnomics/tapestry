@@ -380,39 +380,6 @@ class Alignments():
         return results
 
 
-    def get_contig_read_counts(self, contig_name):
-        stmt = (select([
-                    self.alignments.c.alntype, 
-                    func.count(self.alignments.c.query).label('reads'), 
-                    func.sum(self.alignments.c.aligned_length).label('aligned_length'),
-                    func.sum(self.reads.c.length).label('read_length')
-                ])
-                .select_from(self.reads.join(self.alignments, self.reads.c.name == self.alignments.c.query))
-                .where(and_(
-                    self.alignments.c.querytype == 'read',
-                    self.alignments.c.contig == contig_name
-                    ))
-                .group_by(self.alignments.c.alntype)
-               )
-
-        with self.engine.connect() as conn:
-            results = conn.execute(stmt).fetchall()
-
-        # Convert results to DataFrame
-        count_bases = pd.DataFrame(results)
-        if count_bases.empty:
-            return None
-        count_bases.columns =  results[0].keys()
-        count_bases = count_bases.set_index('alntype')
-
-        # Fill missing values
-        for alntype in 'primary', 'secondary', 'supplementary':
-            if alntype not in count_bases.index:
-                count_bases.loc[alntype] = [0, 0, 0]
-
-        return count_bases
-
-
 #                    RegionStart        RegionEnd                   ReadStart <= RegionEnd ReadEnd >= RegionStart And
 #   ReadStart ReadEnd                                               True                   False                  False
 #   ReadStart                   ReadEnd                             True                   True                   True
