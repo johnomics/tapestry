@@ -119,8 +119,8 @@ class Assembly():
 
     def options(self):
         return [
-            {'option': 'Tapestry Version',         'value': __version__        },
-            {'option': 'Report generation time',   'value': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') },
+            {'option': 'Tapestry version',         'value': __version__        },
+            {'option': 'Report generation time',   'value': datetime.datetime.now().strftime('%d %B %Y %H:%M:%S') },
             {'option': 'Assembly file',            'value': self.assemblyfile  },
             {'option': 'Reads file',               'value': self.readfile      },
             {'option': 'Telomeres',                'value': self.telomere_seqs },
@@ -128,7 +128,7 @@ class Assembly():
             {'option': 'Genome coverage',          'value': self.coverage      },
             {'option': 'Minimum read length',      'value': self.minreadlength },
             {'option': 'Window size',              'value': self.windowsize    },
-            {'option': 'Read alignments included', 'value': self.noreadoutput  }
+            {'option': 'Read alignments included', 'value': not self.noreadoutput  }
         ]
 
     def load_assembly(self):
@@ -327,6 +327,7 @@ class Assembly():
             print(template.render(
                     windowsize = self.windowsize,
                     outdir = self.outdir,
+                    assemblyfile = os.path.basename(self.assemblyfile),
                     options = json.dumps(self.options()),
                     contigs = json.dumps([self.contigs[c].json() for c in self.contigs]),
                     read_alignments = json.dumps(read_alignments),

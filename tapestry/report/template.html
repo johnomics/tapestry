@@ -47,11 +47,17 @@ SOFTWARE.
       html {
           font-size: 14px;
       }
-      #assembly_section { 
-          display: flex; 
+      .section {
+          display: flex;
       }
       body {
           padding-top: 50px;
+      }
+      .footer {
+        width: 100%;
+        height: 60px; /* Set the fixed height of the footer here */
+        line-height: 60px; /* Vertically center the text there */
+        background-color: #f5f5f5;
       }
       .alert {
           display: none;
@@ -71,7 +77,7 @@ SOFTWARE.
 </head>
 
 <body>
-  <div class="mainpage">
+  <div class="mainpage" style="margin-left: 10px">
     <noscript>
       <div class="alert alert-danger">
         <h4>JavaScript Disabled</h4>
@@ -84,81 +90,120 @@ SOFTWARE.
     </noscript>
 
     <nav class="navbar navbar-expand-sm fixed-top navbar-dark bg-primary">
-      <a class="navbar-brand" href="#">Tapestry Report</a>
+      <a class="navbar-brand" href="https://github.com/johnomics/tapestry">Tapestry Report</a>
       <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#collapsingNavbar">
           <span class="navbar-toggler-icon"></span>
       </button>
       <div class="navbar-collapse collapse" id="collapsingNavbar">
         <ul class="navbar-nav">
           <li class="nav-item active">
-            <a class="nav-link" href="#info_ref">Assembly</a>
+            <a class="nav-link" href="#assembly">Assembly</a>
           </li>
           <li class="nav-item">
-            <a class="nav-link" href="#contigs_ref">Contigs</a>
+            <a class="nav-link" href="#contigs">Contigs</a>
           </li>
           <li class="nav-item">
-            <a class="nav-link" href="#reads_ref">Reads</a>
+            <a class="nav-link" href="#reads">Reads</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#information">Information</a>
           </li>
         </ul>
       </div>
     </nav>
-
-
     
-    <a name="info_ref"></a>
-    <table id="options_table" data-show-header="false">
-      <thead>
-        <tr>
-          <th data-field="option">Option</th>
-          <th data-field="value">Value</th>
-        </tr>
-      </thead>
-    </table>
-    <table id="assembly_table" data-sort-name="cluster" data-sort-order="asc">
-      <thead>
-        <tr>
-          <th data-field="assembly" data-sortable="true">Contig set</th>
-          <th data-field="contigs" data-sortable="true">Contig number</th>
-          <th data-field="length" data-sortable="true">Length (bp)</th>
-          <th data-field="n50_number" data-sortable="true">N50 number</th>
-          <th data-field="n50_length" data-sortable="true">N50 length</th>
-        </tr>
-      </thead>
-    </table>
-
-    <input type="file" id="assembly_csv" name="assembly_csv" accept=".csv, text/csv" />
-    <div class="alert alert-warning badcsv" role="alert">
-        Contigs in CSV file do not match contigs in report. Please choose a CSV file that matches this assembly.
-        <button type="button" class="close" aria-hidden="true">&times;</button>
-    </div>
-    <div class="alert alert-success goodcsv" role="alert">
-        Contigs loaded successfully!
-        <button type="button" class="close" aria-hidden="true">&times;</button>
+    <br>
+    <p>
+        This is a Tapestry report on the genome assembly <strong>{{assemblyfile}}</strong>. See <a href="#information">Information</a> for full details.
+    </p>
+    <div>
+      If you have a contig order in a Tapestry CSV file, load it here:
+      <input type="file" id="assembly_csv" name="assembly_csv" accept=".csv, text/csv" aria-describedby="filehelp">
+      <div class="alert alert-warning badcsv" role="alert">
+          Contigs in CSV file do not match contigs in report. Please choose a CSV file that matches this assembly.
+          <button type="button" class="close" aria-hidden="true">&times;</button>
+      </div>
+      <div class="alert alert-success goodcsv" role="alert">
+          Contigs loaded successfully!
+          <button type="button" class="close" aria-hidden="true">&times;</button>
+      </div>
     </div>
     
-    <a name="contigs_ref"></a>
-    <div id="assembly_section">
-        <div id="assembly_plot"></div>
-        <table id="contig_table">
-          <thead>
-            <tr>
-              <th data-radio="true"></th>
-              <th data-field="name" data-sortable="true" data-align='left'>Contig</th>
-              <th data-field="length" data-sortable="true" data-align='right' data-formatter="length_formatter">Length</th>
-              <th data-field="gc" data-sortable="true" data-formatter="gc_formatter" data-align='right'>GC %</th>
-              <th data-field="median_read_depth" data-sortable="true" data-formatter="depth_formatter" data-align='right'>Read Depth</th>
-              <th data-field="cluster" data-sortable="true" data-editable="true" data-align='right'>Cluster</th>
-              <th data-field="included" data-sortable="true" data-formatter="include_checkbox" data-align='center'>Keep</th>
-              <th data-field="notes" data-sortable="true" data-editable="true">Notes</th>
-            </tr>
-          </thead>
-        </table>
+    <hr/>
+    <h2><a name="assembly">Assembly</a></h2>
+    <div class="section">
+      <table id="assembly_table" style="width: auto" data-sort-order="asc">
+        <thead>
+          <tr>
+            <th data-field="assembly" data-sortable="true">Contig set</th>
+            <th data-field="contigs" data-align='right' data-sortable="true">Contig number</th>
+            <th data-field="length" data-align='right' data-sortable="true">Length (bp)</th>
+            <th data-field="n50_number" data-align='right' data-sortable="true">N50 number</th>
+            <th data-field="n50_length" data-align='right' data-sortable="true">N50 length</th>
+          </tr>
+        </thead>
+      </table>
     </div>
-
-    <a name="reads_ref"></a>
-    <div id="read_alignment_plot"></div>
-
+    <hr/>
+    
+    <div style="margin-top:20px">
+      <h2><a name="contigs">Contigs</a></h2>
+      <p><strong>Usage:</strong> Click on contig names in the plot to show contig alignments. Click on a radio button in the table to show read alignments for the selected contig.</p>
+      <div class="section">
+          <div id="contigs_plot"></div>
+          <table id="contig_table">
+            <thead>
+              <tr>
+                <th data-radio="true"></th>
+                <th data-field="name" data-sortable="true" data-align='left'>Contig</th>
+                <th data-field="length" data-sortable="true" data-align='right' data-formatter="local_formatter">Length</th>
+                <th data-field="gc" data-sortable="true" data-formatter="gc_formatter" data-align='right'>GC %</th>
+                <th data-field="median_read_depth" data-sortable="true" data-formatter="depth_formatter" data-align='right'>Read Depth</th>
+                <th data-field="cluster" data-sortable="true" data-editable="true" data-align='right'>Cluster</th>
+                <th data-field="included" data-sortable="true" data-formatter="include_checkbox" data-align='center'>Keep</th>
+                <th data-field="notes" data-sortable="true" data-editable="true">Notes</th>
+              </tr>
+            </thead>
+          </table>
+      </div>
+    </div>
+    <hr/>
+    
+    <h2><a name="reads">Read Alignments</a></h2>
+    <div class="section">
+      <div id="read_alignment_plot"></div>
+    </div>
+    <hr/>
+    
+    <h2><a name="information">Information</a></h2>
+    <div class="section" style="margin-bottom: 20px">
+      <table id="options_table" data-show-header="false" style="margin-top: 20px">
+        <thead>
+          <tr>
+            <th data-width="200px" data-field="option"  data-formatter="info_formatter">Option</th>
+            <th data-field="value" data-formatter="local_formatter">Value/th>
+          </tr>
+        </thead>
+      </table>
+    </div>
   </div>
+
+
+  <footer class="footer">
+      © 2019 <a href="https://github.com/johnomics/tapestry/">John Davey</a>.
+      Built with <a href="https://d3js.org">D3</a>,
+      <a href="https://getbootstrap.com">Bootstrap</a>,
+      <a href="https://bootstrap-table.com">Bootstrap Table</a>,
+      <a href="https://vitalets.github.io/x-editable/">X-editable</a>,
+      <a href="https://github.com/hhurz/tableExport.jquery.plugin">TableExport</a>,
+      <a href="https://github.com/eligrey/FileSaver.js">FileSaver.js</a>,
+      <a href="https://jquery.com">JQuery</a>,
+      <a href="https://www.papaparse.com">PapaParse</a>,
+      <a href="https://popper.js.org">Popper.js</a>, and the 
+      <a href="https://bootswatch.com/litera/">Litera</a> theme via 
+      <a href="https://epicbootstrap.com">Epic Bootstrap</a>.
+  </footer>
+
 <script type="text/javascript">
 {{ include_file('static/jquery-3.3.1.min.js') }}
 {{ include_file('static/popper.min.js') }}
@@ -256,16 +301,20 @@ function get_n50_stats(contiglist, assembly_length) {
     return [n50_number, n50_length];
 }
 
-function length_formatter(value) {
+function local_formatter(value) {
     return value.toLocaleString();
 }
 
 function gc_formatter(value) {
-    return '<div style="color: ' + assembly_dim.gcscale(value/100) + '">' + value + '</div>'
+    return '<div style="color: ' + assembly_dim.gcscale(value/100) + '">' + value + '</div>';
 }
 
 function depth_formatter(value) {
-    return '<div style="color: ' + assembly_dim.depthscale(0.35 + (0.65*value)/median_depth) + '">' + value + '</div>'
+    return '<div style="color: ' + assembly_dim.depthscale(0.35 + (0.65*value)/median_depth) + '">' + value + '</div>';
+}
+
+function info_formatter(value) {
+    return '<strong>' + value + '</strong>';
 }
 
 function isEmpty(obj) {
@@ -705,7 +754,7 @@ assembly_dim.depthscale = d3.scaleSequential(d3.interpolateGreys);
 assembly_dim.clusterscale = d3.scaleOrdinal(d3.schemeDark2);
 
 
-var assembly_svg = d3.select("#assembly_plot")
+var assembly_svg = d3.select("#contigs_plot")
             .append("svg")
             .attr("width", dim.width + dim.margin.left + dim.margin.right/2)
             .attr("height", assembly_dim.height + dim.margin.top + dim.margin.bottom)
@@ -728,6 +777,7 @@ assembly_svg.append("text")
     .style("text-anchor", "middle")
     .attr("fill", "black")
     .text("Position (bp)");
+
 
 
 var contig_groups = assembly_svg.selectAll("g.contig")
