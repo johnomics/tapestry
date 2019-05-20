@@ -29,11 +29,11 @@
 
 from ._version import __version__
 
-import os, sys, argparse, itertools, errno, io, pkg_resources
+import os, sys, argparse, itertools, errno, io, binascii, pkg_resources
 import logging as log
 from functools import partial, lru_cache
 from tqdm import tqdm
-
+from Bio import SeqIO
 from plumbum import local, CommandNotFound
 
 failed = []
@@ -94,8 +94,8 @@ def get_args(arglist=[], description="", scriptargs=[]):
 def get_weave_args(arglist=[]):
     args = get_args(sys.argv[1:], 
            "weave: assess quality of one genome assembly",
-           ["'-a', '--assembly', help='filename of assembly in FASTA format', type=str",
-            "'-r', '--reads', help='filename of reads in FASTQ format (can be gzipped)', type=str",
+           ["'-a', '--assembly', help='filename of assembly in FASTA format (required)', type=str, required=True",
+            "'-r', '--reads', help='filename of long reads in FASTQ format (required; must be gzipped)', type=str, required=True",
             "'-d', '--depth', help='genome coverage to subsample from FASTQ file (default 50)', type=int, default=50",
             "'-l', '--length', help='minimum read length to retain when subsampling (default 10000)', type=int, default=10000",
             "'-t', '--telomere', help='telomere sequence to search for', type=str, action='append', nargs='+'",
@@ -103,8 +103,12 @@ def get_weave_args(arglist=[]):
             "'-n', '--noreadoutput', help='do not output read alignments in report (default False)', action='store_true'",
             "'-o', '--output', help='directory to write output, default weave_output', type=str, default='weave_output'"])
 
-    if not args.assembly:
-        log.error("Assembly file in FASTA format is required (-a, --assembly)")
+    if not is_fasta(args.assembly):
+        log.error("Assembly file must be in unzipped FASTA format")
+        sys.exit()
+    
+    if not is_gz_file(args.reads):
+        log.error("Reads FASTQ file must be gzipped")
         sys.exit()
 
     return args
@@ -118,7 +122,10 @@ def weave_welcome(arglist=[]):
     print(f"Reads to sample from\t{arglist.reads}")
     print(f"Coverage to sample\t{arglist.depth}")
     print(f"Minimum read length\t{arglist.length}")
-    print(f"Telomere sequence(s)\t{' '.join(arglist.telomere[0])}")
+    telomere_string = "None"
+    if arglist.telomere:
+        telomere_string = ' '.join(arglist.telomere[0])
+    print(f"Telomere sequence(s)\t{telomere_string}")
     print(f"Ploidy window size\t{arglist.windowsize}")
     print(f"Output directory\t{arglist.output}")
     print()
@@ -157,6 +164,17 @@ def file_exists(filename, deps=[]):
     return (os.path.exists(filename) and 
              all([os.stat(filename).st_mtime > os.stat(dep).st_mtime for dep in deps])
            )
+
+
+def is_gz_file(filepath):
+    with open(filepath, 'rb') as test_f:
+        return binascii.hexlify(test_f.read(2)) == b'1f8b'
+
+
+def is_fasta(filename):
+    with open(filename, "r") as handle:
+        fasta = SeqIO.parse(handle, "fasta")
+        return any(fasta)  # False when `fasta` is empty, i.e. wasn't a FASTA file
 
 
 def cached_property(function):

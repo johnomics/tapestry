@@ -298,8 +298,8 @@ class Assembly():
         log.info(f"Generating contig details")
 
         try:
-            with open(f"{self.outdir}/contig_details.txt", 'wt') as report_file:
-                print("Cluster\tContig\tLength\tGC%\tMedianReadDepth\tStartTelomeres\tEndTelomeres\tStartMeanReadOverhangBases\tEndMeanReadOverhangBases\tUniqueBases\tUnique%\tCompleteness\tPloidys\tStartConnectors\tEndConnectors", file=report_file)
+            with open(f"{self.outdir}/contig_details.tsv", 'wt') as report_file:
+ print("Cluster\tContig\tLength\tGC%\tMedianReadDepth\tStartTelomeres\tEndTelomeres\tStartMeanReadOverhangBases\tEndMeanReadOverhangBases\tUniqueBases\tUnique%\tCategory\tPloidys\tStartConnectors\tEndConnectors", file=report_file)
                 for contigname in sorted(self.contigs, key=lambda c: (self.contigs[c].cluster, -len(self.contigs[c]))):
                     print(self.contigs[contigname].report(self.gc), file=report_file)
         except IOError:
@@ -323,9 +323,10 @@ class Assembly():
         if not self.noreadoutput:
             read_alignments = {c:self.contigs[c].read_alignments for c in self.contigs}
 
-        with open(f"{self.outdir}/tapestry_report.html", 'wt') as html_report:
+        with open(f"{self.outdir}/{self.outdir}.tapestry_report.html", 'wt') as html_report:
             print(template.render(
                     windowsize = self.windowsize,
+                    outdir = self.outdir,
                     options = json.dumps(self.options()),
                     contigs = json.dumps([self.contigs[c].json() for c in self.contigs]),
                     read_alignments = json.dumps(read_alignments),

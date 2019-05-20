@@ -178,6 +178,7 @@ SOFTWARE.
 {{ include_file('static/d3.min.js') }}
 
 var windowsize = {{ windowsize }};
+var outdir = "{{ outdir }}";
 var options = {{ options }};
 var median_depth = {{ median_depth }};
 var contigs = {{ contigs }};
@@ -784,7 +785,7 @@ $('#contig_table').bootstrapTable({
     sortPriority: [{"sortName":"included","sortOrder":"desc"}, {"sortName":"length","sortOrder":"desc"}],
     showExport: true,
     exportTypes: ['csv'],
-    exportOptions: { onCellHtmlData: DoCellData },
+    exportOptions: { onCellHtmlData: DoCellData, fileName: outdir + "_filtered" },
     data: contigs,
     onPostBody: function() { update_assembly() },
     onCheck: function(row) {
