@@ -115,7 +115,7 @@ class Contig:
 
         for a in sorted(self.contig_alignments, key=lambda a: a.begin):
             contig, contig_start, contig_end = a.data
-            if contig == self.name:
+            if contig == self.name and (a.begin <= contig_end and a.end >= contig_start):
                 continue
             alignments.append((a.begin, a.end, self.contig_ids[contig], contig_start, contig_end))
 

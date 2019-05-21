@@ -121,8 +121,8 @@ class Assembly():
         return [
             {'option': 'Tapestry version',         'value': __version__        },
             {'option': 'Report generation time',   'value': datetime.datetime.now().strftime('%d %B %Y %H:%M:%S') },
-            {'option': 'Assembly file',            'value': self.assemblyfile  },
-            {'option': 'Reads file',               'value': self.readfile      },
+            {'option': 'Assembly file',            'value': os.path.basename(self.assemblyfile)  },
+            {'option': 'Reads file',               'value': os.path.basename(self.readfile)      },
             {'option': 'Telomeres',                'value': self.telomere_seqs },
             {'option': 'Output directory',         'value': self.outdir        },
             {'option': 'Genome coverage',          'value': self.coverage      },

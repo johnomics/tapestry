@@ -131,7 +131,7 @@ SOFTWARE.
     
     <hr/>
     <h2><a name="assembly">Assembly</a></h2>
-    <p>Selected and rejected contigs are those checked and unchecked in the <a href="#contigs">contig table</a> Keep column below.</p>
+    <p>Selected and rejected contigs are those checked and unchecked in the <a href="#contigs">contig table</a> <strong>Keep</strong> column below.</p>
     <div class="section">
       <table id="assembly_table" style="width: auto" data-sort-order="asc">
         <thead>
@@ -622,35 +622,50 @@ function plot_read_alignments(alignments, dim, reads, contig) {
 function connect_alignments(d, i) {
     this_y = assembly.dim.yscale(d3.select(this).attr("contig1"))
     other_y = assembly.dim.yscale(d3.select(this).attr("contig2"))
-    
-    if (this_y < other_y) {
-        this_y += assembly.dim.yscale.bandwidth()*2;
-        other_y += assembly.dim.yscale.bandwidth();
-    } else {
+
+    if (this_y == other_y) {
         this_y += assembly.dim.yscale.bandwidth();
         other_y += assembly.dim.yscale.bandwidth()*2;
+        xpoints = [d[0], d[1], d[3], d[4]].sort((a,b) => Number(a) - Number(b));
+        x1 = xpoints[1]; // Make sure inner points are used,
+        x2 = xpoints[1]; // so new rect doesn't overlap
+        x3 = xpoints[2]; // existing rects
+        x4 = xpoints[2];
+    } else {
+        if (this_y < other_y) {
+            this_y += assembly.dim.yscale.bandwidth()*2;
+            other_y += assembly.dim.yscale.bandwidth();
+        } else {
+            this_y += assembly.dim.yscale.bandwidth();
+            other_y += assembly.dim.yscale.bandwidth()*2;
+        }
+        x1 = d[0];
+        x2 = d[3];
+        x3 = d[4];
+        x4 = d[1];
     }
-
-    poly = [{"x":dim.xscale(d[0]), "y":this_y },
-            {"x":dim.xscale(d[3]), "y":other_y },
-            {"x":dim.xscale(d[4]), "y":other_y },
-            {"x":dim.xscale(d[1]), "y":this_y }];
-
-    assembly.svg.selectAll("polygon")
-            .data([poly])
-            .enter()
-            .append("polygon")
-            .attr("points",function(d) { 
-                   return d.map(function(d) {
-                       return [d.x,d.y].join(",");
-                   }).join(" ");
-               })
-            .attr("fill", "blue")
-            .attr("fill-opacity",0.1);
+    
+    var poly = [{"x":dim.xscale(x1), "y":this_y },
+                {"x":dim.xscale(x2), "y":other_y },
+                {"x":dim.xscale(x3), "y":other_y },
+                {"x":dim.xscale(x4), "y":this_y }];
+    
+    assembly.svg.selectAll("polygon.connector")
+        .data([poly])
+        .enter()
+        .append("polygon")
+        .attr("class", "connector")
+        .attr("points",function(d) { 
+               return d.map(function(d) {
+                   return [d.x,d.y].join(",");
+               }).join(" ");
+           })
+        .attr("fill", "purple")
+        .attr("fill-opacity",0.1);
 }
 
 function disconnect_alignments(d, i) {
-    assembly.svg.selectAll("polygon").remove()
+    assembly.svg.selectAll(".connector").remove()
 }
 
 function show_contig_alignments(contig, assembly) {

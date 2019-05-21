@@ -170,11 +170,11 @@ class Alignments():
                     query_length, aligned_length = self.get_alignment_lengths(aln, alntype)
             
                     query_start, query_end, left_clip, right_clip = self.get_query_ends(aln, alntype, query_length)
-            
-                    if query_type is 'contig':
-                        if aln.query_name == aln.reference_name:
-                            continue
-                        elif alntype is not 'unmapped':
+
+                    if query_type is 'contig' and aln.query_name != aln.reference_name and alntype is not 'unmapped':
+#                        if aln.query_name == aln.reference_name:
+#                            continue
+#                        elif alntype is not 'unmapped':
                             # Insert contig alignment in the other direction
                             aln_id += 1
                             alignment_chunk.append({
