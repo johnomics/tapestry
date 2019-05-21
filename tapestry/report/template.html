@@ -234,6 +234,12 @@ var ploidys = {{ ploidys }};
 
 var current_aligned_contig = '';
 
+ploidy_depths = [ {name:'haploid',    depth: median_depth * 0.5}, 
+                  {name:'diploid',    depth: median_depth      }, 
+                  {name:'triploid',   depth: median_depth * 1.5}, 
+                  {name:'tetraploid', depth: median_depth * 2  },
+                  {name:'repeat',     depth: median_depth * 2.5} ];
+
 var contig_names = {};
 var contig_short_long = {};
 var contig_id_short = {};
@@ -282,8 +288,46 @@ for (var contig_id_1 in contig_coverage) {
     }
 }
 
+function local_formatter(value) {
+    return value.toLocaleString();
+}
+
+function gc_formatter(value) {
+    return '<div style="color: ' + assembly.dim.gcscale(value/100) + '">' + value + '</div>';
+}
+
+function depth_formatter(value) {
+    return '<div style="color: ' + assembly.dim.depthscale(0.35 + (0.65*value)/median_depth) + '">' + value + '</div>';
+}
+
+function info_formatter(value) {
+    return '<strong>' + value + '</strong>';
+}
+
+function mq_opacity(mq) { return 0.1 + 0.9*mq/60 }
+
+function isEmpty(obj) {
+  return Object.keys(obj).length === 0;
+}
+
 function get_assembly_length(contigs) {
     return contigs.reduce((a,b) => ({length: a.length + b.length}), {length: 0}).length;
+}
+
+function check_max(max_val, list, i) {
+    var list_max = d3.max(list, function(d) {return d[i]});
+    if (max_val < list_max) {
+        max_val = list_max;
+    }
+    return max_val;
+}
+
+function check_min(min_val, list, i) {
+    var list_min = d3.min(list, function(d) {return d[i]});
+    if (min_val > list_min) {
+        min_val = list_min;
+    }
+    return min_val;
 }
 
 function get_n50_stats(contiglist, assembly_length) {
@@ -299,26 +343,6 @@ function get_n50_stats(contiglist, assembly_length) {
     })
     
     return [n50_number, n50_length];
-}
-
-function local_formatter(value) {
-    return value.toLocaleString();
-}
-
-function gc_formatter(value) {
-    return '<div style="color: ' + assembly_dim.gcscale(value/100) + '">' + value + '</div>';
-}
-
-function depth_formatter(value) {
-    return '<div style="color: ' + assembly_dim.depthscale(0.35 + (0.65*value)/median_depth) + '">' + value + '</div>';
-}
-
-function info_formatter(value) {
-    return '<strong>' + value + '</strong>';
-}
-
-function isEmpty(obj) {
-  return Object.keys(obj).length === 0;
 }
 
 function calculate_assembly_stats(contigs, label) {
@@ -340,30 +364,6 @@ function calculate_stats(contigs) {
     ]
 }
 
-ploidy_depths = [ {name:'haploid',    depth: median_depth * 0.5}, 
-                  {name:'diploid',    depth: median_depth      }, 
-                  {name:'triploid',   depth: median_depth * 1.5}, 
-                  {name:'tetraploid', depth: median_depth * 2  },
-                  {name:'repeat',     depth: median_depth * 2.5} ];
-
-function check_max(max_val, list, i) {
-    var list_max = d3.max(list, function(d) {return d[i]});
-    if (max_val < list_max) {
-        max_val = list_max;
-    }
-    return max_val;
-}
-
-function check_min(min_val, list, i) {
-    var list_min = d3.min(list, function(d) {return d[i]});
-    if (min_val > list_min) {
-        min_val = list_min;
-    }
-    return min_val;
-}
-
-function mq_opacity(mq) { return 0.1 + 0.9*mq/60 }
-
 function clip_colour(type) {
     if (type === 'C') { // Connection
         return 'mediumorchid'
@@ -376,11 +376,11 @@ function clip_colour(type) {
     }
 }
 
-function contig_text_hover(x, y, contig_id, anchor) {
-    reads_svg.append("text")
+function contig_text_hover(x, y, contig_id, anchor, dim, reads) {
+    reads.svg.append("text")
         .attr("class", "alignment text")
         .attr("x", dim.xscale(x))
-        .attr("y", reads_dim.yscale(y))
+        .attr("y", reads.dim.yscale(y))
         .attr("text-anchor", anchor)
         .attr("alignment-baseline", "middle")
         .attr("fill", "black")
@@ -389,12 +389,73 @@ function contig_text_hover(x, y, contig_id, anchor) {
 }
 
 function contig_text_unhover() {
-    reads_svg.selectAll("text.alignment.text").remove()
+    reads.svg.selectAll("text.alignment.text").remove()
 }
 
-function build_reads_plot(read_alignments, dim, reads_dim, assembly_dim, ploidy_depths) {
+function build_assembly_plot(contigs, dim, windowsize) {
 
-    reads_svg = d3.select("#read_alignment_plot")
+    var assembly = {};
+    assembly.dim = {height: contigs.length * 29};
+    
+    assembly.dim.yscale = d3.scaleBand()
+                          .domain(contigs.map(d => d.name))
+                          .rangeRound([0, assembly.dim.height])
+                          .paddingInner(0.8)
+                          .paddingOuter(0.4);
+
+    assembly.dim.ploidyscale = d3.scaleSequential(d3.interpolateGreens);
+    assembly.dim.gcscale = d3.scaleSequential(d3.interpolateRainbow);
+    assembly.dim.depthscale = d3.scaleSequential(d3.interpolateGreys);
+    assembly.dim.clusterscale = d3.scaleOrdinal(d3.schemeDark2);
+
+    assembly.svg = d3.select("#contigs_plot")
+                .append("svg")
+                .attr("width", dim.width + dim.margin.left + dim.margin.right/2)
+                .attr("height", assembly.dim.height + dim.margin.top + dim.margin.bottom)
+                .append("g")
+                .attr("transform", "translate(" + dim.margin.left + "," + (dim.margin.top + assembly.dim.height) + ")")
+                .call(xaxis)
+                .attr("class", "xaxis")
+                .append("g")
+                .attr("transform", "translate(0,-" + assembly.dim.height + ")")
+                .call(d3.axisLeft(assembly.dim.yscale))
+                .attr("class", "yaxis");
+
+    assembly.svg
+        .selectAll(".tick")
+        .on("click", function(d) { show_contig_alignments(d, assembly); })
+    
+    assembly.svg.append("text")
+        .attr("class", "xaxislabel")
+        .attr("transform", "translate(" + (dim.width/2) + " ," + (assembly.dim.height + 45) + ")")
+        .style("text-anchor", "middle")
+        .attr("fill", "black")
+        .text("Position (bp)");
+    
+    assembly.svg.selectAll("g.contig")
+        .data(contigs, function(d) { return d.name })
+        .enter()
+        .append("g")
+        .attr("class", "contig")
+        .attr("name", function(d) { return d.name })
+        .attr("longname", function(d) { return d.longname })
+        .attr("length", function(d) { return d.length })
+        .each(function(d) { build_contig(d3.select(this), dim, assembly, windowsize); });
+
+    return assembly;
+}
+
+function build_reads_plot(read_alignments, dim, max_read_depth, assembly, ploidy_depths) {
+
+    var reads = {};
+    
+    reads.dim = { height: 300 };
+
+    reads.dim.yscale = d3.scaleLinear()
+                         .domain([0, max_read_depth])
+                         .range([reads.dim.height, 0]);
+
+    reads.svg = d3.select("#read_alignment_plot")
                   .append("svg")
                   .attr("width", dim.width + dim.margin.left + dim.margin.right)
     
@@ -407,56 +468,55 @@ function build_reads_plot(read_alignments, dim, reads_dim, assembly_dim, ploidy_
             .attr("fill", "black")
             .text("Read alignments are not available in this report (re-run Tapestry without the -n option to include them).")
 
-        return reads_svg;
+        return reads;
     }
 
-    reads_svg = reads_svg
-        .attr("height", reads_dim.height + 20 + dim.margin.bottom)
+    reads.svg = reads.svg
+        .attr("height", reads.dim.height + 20 + dim.margin.bottom)
         .append("g")
-        .attr("transform", "translate(" + dim.margin.left + "," + (20 + reads_dim.height) + ")")
+        .attr("transform", "translate(" + dim.margin.left + "," + (20 + reads.dim.height) + ")")
         .call(xaxis)
         .attr("class", "xaxis")
         .append("g")
-        .attr("transform", "translate(0,-" + reads_dim.height + ")")
-        .call(yaxis)
+        .attr("transform", "translate(0,-" + reads.dim.height + ")")
+        .call(d3.axisLeft(reads.dim.yscale))
         .attr("class", "yaxis")
     
-    reads_svg.append("text")
+    reads.svg.append("text")
         .attr("class", "yaxislabel")
         .attr("transform", "rotate(-90)")
         .attr("y", 0 - (dim.margin.left * 0.6))
-        .attr("x",0 - (reads_dim.height / 2))
+        .attr("x",0 - (reads.dim.height / 2))
         .attr("fill", "black")
         .style("text-anchor", "middle")
         .text("Reads"); 
 
-    reads_svg.selectAll("line.ploidy")
+    reads.svg.selectAll("line.ploidy")
         .data(ploidy_depths.filter(d => d.name != "repeat"))
         .enter()
         .append("line")
         .attr("class", "ploidy")
         .attr("x1", dim.xscale.range()[0]+1) // +1 to avoid axis
         .attr("x2", dim.xscale.range()[1])
-        .attr("y1", function(d) { return reads_dim.yscale(d.depth) })
-        .attr("y2", function(d) { return reads_dim.yscale(d.depth) })
-        .style("stroke", function(d, i) { return assembly_dim.ploidyscale((1+i*0.8)/5); })
+        .attr("y1", function(d) { return reads.dim.yscale(d.depth) })
+        .attr("y2", function(d) { return reads.dim.yscale(d.depth) })
+        .style("stroke", function(d, i) { return assembly.dim.ploidyscale((1+i*0.8)/5); })
         .style("stroke-width", 2)
     
-    reads_svg.selectAll("text.ploidy")
+    reads.svg.selectAll("text.ploidy")
         .data(ploidy_depths)
         .enter()
         .append("text")
         .attr("x", dim.xscale.range()[1] + 10 )
-        .attr("y", function(d) { return reads_dim.yscale(d.depth)+2 })
-        .style("fill", function(d, i) { return assembly_dim.ploidyscale((1+i*0.8)/5) })
+        .attr("y", function(d) { return reads.dim.yscale(d.depth)+2 })
+        .style("fill", function(d, i) { return assembly.dim.ploidyscale((1+i*0.8)/5) })
         .style("text-anchor", "start")
         .text(function(d) { return d.name })
     
-    return reads_svg;
-
+    return reads;
 }
 
-function plot_read_alignments(alignments, dim, assembly_dim, reads_dim, svg, contig) {
+function plot_read_alignments(alignments, dim, reads, contig) {
 
     // contig_read_alignments:
     //  0 read start including left clip
@@ -470,38 +530,38 @@ function plot_read_alignments(alignments, dim, assembly_dim, reads_dim, svg, con
         return;
     }
     
-    svg.selectAll("text.xaxislabel").remove()
+    reads.svg.selectAll("text.xaxislabel").remove()
     
-    svg.append("text")
+    reads.svg.append("text")
        .attr("class", "xaxislabel")
-       .attr("transform", "translate(" + (dim.width/2) + " ," + (reads_dim.height + 45) + ")")
+       .attr("transform", "translate(" + (dim.width/2) + " ," + (reads.dim.height + 45) + ")")
        .style("text-anchor", "middle")
        .attr("fill", "black")
        .text(contig + " Position (bp)");
 
-    svg.selectAll("line.contig_boundary").remove()
+    reads.svg.selectAll("line.contig_boundary").remove()
        
-    svg.append("line")
+    reads.svg.append("line")
        .attr("class", "contig_boundary")
        .attr("x1", dim.xscale(0) )
        .attr("x2", dim.xscale(0) )
-       .attr("y1", reads_dim.yscale.range()[0] )
-       .attr("y2", reads_dim.yscale.range()[1] )
+       .attr("y1", reads.dim.yscale.range()[0] )
+       .attr("y2", reads.dim.yscale.range()[1] )
        .style("stroke-dasharray", "5,5")
        .style("stroke", "black")
 
-    svg.append("line")
+    reads.svg.append("line")
        .attr("class", "contig_boundary")
        .attr("x1", dim.xscale(contig_lengths[contig_short_id[contig]]) )
        .attr("x2", dim.xscale(contig_lengths[contig_short_id[contig]]) )
-       .attr("y1", reads_dim.yscale.range()[0] )
-       .attr("y2", reads_dim.yscale.range()[1] )
+       .attr("y1", reads.dim.yscale.range()[0] )
+       .attr("y2", reads.dim.yscale.range()[1] )
        .style("stroke-dasharray", "5,5")
        .style("stroke", "black")
 
-    svg.selectAll("line.read_alignment").remove()
+    reads.svg.selectAll("line.read_alignment").remove()
 
-    var ra = svg.selectAll("line.read_alignment")
+    var ra = reads.svg.selectAll("line.read_alignment")
         .data(alignments)
         .enter();
     
@@ -509,13 +569,13 @@ function plot_read_alignments(alignments, dim, assembly_dim, reads_dim, svg, con
         .attr("class", "read_alignment main")
         .attr("x1", function(d) { return dim.xscale(d[1]); })
         .attr("x2", function(d) { return dim.xscale(d[2]); })
-        .attr("y1", function(d) { return reads_dim.yscale(d[5]); })
-        .attr("y2", function(d) { return reads_dim.yscale(d[5]); })
+        .attr("y1", function(d) { return reads.dim.yscale(d[5]); })
+        .attr("y2", function(d) { return reads.dim.yscale(d[5]); })
         .style("stroke-opacity", function(d) { return mq_opacity(d[4]) })
         .style("stroke", "blue")
         .on("mouseover", function(d) {
-            contig_text_hover(d[0], d[5], d[6], "end");
-            contig_text_hover(d[3], d[5], d[7], "start");
+            contig_text_hover(d[0], d[5], d[6], "end", dim, reads);
+            contig_text_hover(d[3], d[5], d[7], "start", dim, reads);
         })
         .on("mouseout", contig_text_unhover);
 
@@ -523,12 +583,12 @@ function plot_read_alignments(alignments, dim, assembly_dim, reads_dim, svg, con
         .attr("class", "read_alignment clip left")
         .attr("x1", function(d) { return dim.xscale(d[0]); })
         .attr("x2", function(d) { return dim.xscale(d[1]); })
-        .attr("y1", function(d) { return reads_dim.yscale(d[5]); })
-        .attr("y2", function(d) { return reads_dim.yscale(d[5]); })
+        .attr("y1", function(d) { return reads.dim.yscale(d[5]); })
+        .attr("y2", function(d) { return reads.dim.yscale(d[5]); })
         .style("stroke-opacity", function(d) { return mq_opacity(d[4]); })
         .style("stroke", function(d) { return clip_colour(d[8]); })
         .on("mouseover", function(d) {
-            contig_text_hover(d[0], d[5], d[6], "end");
+            contig_text_hover(d[0], d[5], d[6], "end", dim, reads);
         })
         .on("mouseout", contig_text_unhover);
 
@@ -537,61 +597,27 @@ function plot_read_alignments(alignments, dim, assembly_dim, reads_dim, svg, con
           .attr("contig_id", function(d) { return d[7]})
           .attr("x1", function(d) { return dim.xscale(d[2]); })
           .attr("x2", function(d) { return dim.xscale(d[3]); })
-          .attr("y1", function(d) { return reads_dim.yscale(d[5]); })
-          .attr("y2", function(d) { return reads_dim.yscale(d[5]); })
+          .attr("y1", function(d) { return reads.dim.yscale(d[5]); })
+          .attr("y2", function(d) { return reads.dim.yscale(d[5]); })
           .style("stroke-opacity", function(d) { return mq_opacity(d[4]) })
           .style("stroke", function(d) { return clip_colour(d[9])})
         .on("mouseover", function(d) {
-            contig_text_hover(d[3], d[5], d[7], "start");
+            contig_text_hover(d[3], d[5], d[7], "start", dim, reads);
         })
         .on("mouseout", contig_text_unhover);
 
 }
 
-function reorder_assembly(contigs, assembly_dim, assembly_svg) {
-    assembly_dim.yscale.domain(contigs.map(d => d.name));
-
-    t = d3.transition().duration(1000).ease(d3.easeCubic);
-
-    assembly_svg
-        .transition(t)
-        .call(d3.axisLeft(assembly_dim.yscale));
-
-    assembly_svg.selectAll("rect.ploidy")
-        .transition(t)
-        .attr("y", function(d) { return assembly_dim.yscale(d3.select(this).attr("contig")); });
-
-    assembly_svg.selectAll("circle")
-        .transition(t)
-        .attr("cy", function(d) { return assembly_dim.yscale(d3.select(this).attr("contig")) + assembly_dim.yscale.bandwidth()/2; });
-
-    assembly_svg.selectAll("path.contig_link")
-        .transition(t)
-        .attr("d", d3.linkHorizontal()
-                     .x(function(d) { return d.x == -1 ? 0 : dim.xscale(d.x); })
-                     .y(function(d) { return assembly_dim.yscale(d.y) + assembly_dim.yscale.bandwidth()/2; })
-        );
-
-    assembly_svg.selectAll("rect.contig_alignment.self")
-        .transition(t)
-        .attr("y", function(d) { return assembly_dim.yscale(d3.select(this).attr("contig1")) + assembly_dim.yscale.bandwidth(); });
-
-    assembly_svg.selectAll("rect.contig_alignment.other")
-        .transition(t)
-        .attr("y", function(d) { return assembly_dim.yscale(d3.select(this).attr("contig2")) + assembly_dim.yscale.bandwidth(); });
-
-}
-
 function connect_alignments(d, i) {
-    this_y = assembly_dim.yscale(d3.select(this).attr("contig1"))
-    other_y = assembly_dim.yscale(d3.select(this).attr("contig2"))
+    this_y = assembly.dim.yscale(d3.select(this).attr("contig1"))
+    other_y = assembly.dim.yscale(d3.select(this).attr("contig2"))
     
     if (this_y < other_y) {
-        this_y += assembly_dim.yscale.bandwidth()*2;
-        other_y += assembly_dim.yscale.bandwidth();
+        this_y += assembly.dim.yscale.bandwidth()*2;
+        other_y += assembly.dim.yscale.bandwidth();
     } else {
-        this_y += assembly_dim.yscale.bandwidth();
-        other_y += assembly_dim.yscale.bandwidth()*2;
+        this_y += assembly.dim.yscale.bandwidth();
+        other_y += assembly.dim.yscale.bandwidth()*2;
     }
 
     poly = [{"x":dim.xscale(d[0]), "y":this_y },
@@ -599,7 +625,7 @@ function connect_alignments(d, i) {
             {"x":dim.xscale(d[4]), "y":other_y },
             {"x":dim.xscale(d[1]), "y":this_y }];
 
-    assembly_svg.selectAll("polygon")
+    assembly.svg.selectAll("polygon")
             .data([poly])
             .enter()
             .append("polygon")
@@ -613,15 +639,13 @@ function connect_alignments(d, i) {
 }
 
 function disconnect_alignments(d, i) {
-    assembly_svg.selectAll("polygon").remove()
+    assembly.svg.selectAll("polygon").remove()
 }
 
+function show_contig_alignments(contig, assembly) {
 
-
-function show_contig_alignments(contig, assembly_svg) {
-
-    assembly_svg.selectAll("path.contig_link").remove();
-    assembly_svg.selectAll("rect.contig_alignment").remove();
+    assembly.svg.selectAll("path.contig_link").remove();
+    assembly.svg.selectAll("rect.contig_alignment").remove();
 
     if (contig == current_aligned_contig) {
         current_aligned_contig = '';
@@ -630,14 +654,14 @@ function show_contig_alignments(contig, assembly_svg) {
 
     current_aligned_contig = contig;
     
-    assembly_svg.selectAll("path.contig_link")
+    assembly.svg.selectAll("path.contig_link")
         .data(contig_links[contig])
         .enter()
         .append("path")
         .attr("class", "contig_link")
         .attr("d", d3.linkHorizontal()
                     .x(function(d) { return d.x == -1 ? 0 : dim.xscale(d.x); })
-                    .y(function(d) { return assembly_dim.yscale(d.y) + assembly_dim.yscale.bandwidth()/2; })
+                    .y(function(d) { return assembly.dim.yscale(d.y) + assembly.dim.yscale.bandwidth()/2; })
         )
         .style("stroke-opacity", function(d) {
             return d.self ? 1 : 0.1 + 0.9*contig_coverage_prop[contig_short_id[contig]][contig_short_id[d.target.y]];
@@ -645,7 +669,7 @@ function show_contig_alignments(contig, assembly_svg) {
         .style("stroke", function(d) { return d.self ? "black" : "purple"; })
         .style("stroke-dasharray", function(d) { return d.self ? "2,2" : "none" });
 
-    assembly_svg.selectAll("rect.contig_alignment.self")
+    assembly.svg.selectAll("rect.contig_alignment.self")
         .data(contig_alignments[contig_short_long[contig]])
         .enter()
         .append("rect")
@@ -654,15 +678,15 @@ function show_contig_alignments(contig, assembly_svg) {
         .attr("contig2", function(d) { return contig_id_short[d[2]]; })
         .attr("x", function(d) { return dim.xscale(d[0]); })
         .attr("width", function(d) { return dim.xscale(d[1])-dim.xscale(d[0]); })
-        .attr("y", function(d) { return assembly_dim.yscale(contig) + assembly_dim.yscale.bandwidth(); })
-        .attr("height", function(d) { return assembly_dim.yscale.bandwidth(); })
+        .attr("y", function(d) { return assembly.dim.yscale(contig) + assembly.dim.yscale.bandwidth(); })
+        .attr("height", function(d) { return assembly.dim.yscale.bandwidth(); })
         .style("fill", "blue")
         .style("fill-opacity", 0.1)
         .style("stroke-opacity", 0)
         .on("mouseover", connect_alignments)
         .on("mouseout", disconnect_alignments);
 
-    assembly_svg.selectAll("rect.contig_alignment.other")
+    assembly.svg.selectAll("rect.contig_alignment.other")
         .data(contig_alignments[contig_short_long[contig]])
         .enter()
         .append("rect")
@@ -671,8 +695,8 @@ function show_contig_alignments(contig, assembly_svg) {
         .attr("contig2", function(d) { return contig_id_short[d[2]]; })
         .attr("x", function(d) { return dim.xscale(d[3]); })
         .attr("width", function(d) { return dim.xscale(d[4])-dim.xscale(d[3]); })
-        .attr("y", function(d) { return assembly_dim.yscale(contig_id_short[d[2]]) + assembly_dim.yscale.bandwidth(); })
-        .attr("height", function(d) { return assembly_dim.yscale.bandwidth(); })
+        .attr("y", function(d) { return assembly.dim.yscale(contig_id_short[d[2]]) + assembly.dim.yscale.bandwidth(); })
+        .attr("height", function(d) { return assembly.dim.yscale.bandwidth(); })
         .style("fill", "blue")
         .style("fill-opacity", 0.1)
         .style("stroke-opacity", 0)
@@ -680,7 +704,7 @@ function show_contig_alignments(contig, assembly_svg) {
         .on("mouseout", disconnect_alignments);
 }
 
-function build_contig(contig, dim, assembly_dim, windowsize) {
+function build_contig(contig, dim, assembly, windowsize) {
 
     contig.selectAll("rect.ploidy")
         .data(ploidys[contig.attr("longname")])
@@ -688,14 +712,14 @@ function build_contig(contig, dim, assembly_dim, windowsize) {
         .append("rect")
         .attr("class", "ploidy")
         .attr("contig", contig.attr("name"))
-        .attr("y", function(d) { return assembly_dim.yscale(contig.attr("name")); })
-        .attr("height", assembly_dim.yscale.bandwidth())
+        .attr("y", function(d) { return assembly.dim.yscale(contig.attr("name")); })
+        .attr("height", assembly.dim.yscale.bandwidth())
         .attr("x", function(d, i) { return dim.xscale(i*(windowsize/2)); }) // windowsize/2 because they are sliding
         .attr("width", function(d, i) {
             // either window size or the remainder at the end of the contig; subtract the left contig overhang up to position 0
             return dim.xscale(d3.min([windowsize, contig.attr("length") - i*(windowsize/2)])) - dim.xscale(0);
         })
-        .attr("fill", function(d) { return assembly_dim.ploidyscale((1+d*0.8)/5); })
+        .attr("fill", function(d) { return assembly.dim.ploidyscale((1+d*0.8)/5); })
         .attr("stroke-opacity", 0);
 
     contig.append("circle")
@@ -710,9 +734,67 @@ function build_contig(contig, dim, assembly_dim, windowsize) {
 
     contig.selectAll(".telomere")
         .attr("contig", contig.attr("name"))
-        .attr("cy", function(d) { return assembly_dim.yscale(d.name) + assembly_dim.yscale.bandwidth()/2; })
-        .attr("r", assembly_dim.yscale.bandwidth())
+        .attr("cy", function(d) { return assembly.dim.yscale(d.name) + assembly.dim.yscale.bandwidth()/2; })
+        .attr("r", assembly.dim.yscale.bandwidth())
         .attr("fill", "red");
+}
+
+function reorder_assembly(contigs, assembly, dim) {
+    assembly.dim.yscale.domain(contigs.map(d => d.name));
+
+    t = d3.transition().duration(1000).ease(d3.easeCubic);
+
+    assembly.svg
+        .transition(t)
+        .call(d3.axisLeft(assembly.dim.yscale));
+
+    assembly.svg.selectAll("rect.ploidy")
+        .transition(t)
+        .attr("y", function(d) { return assembly.dim.yscale(d3.select(this).attr("contig")); });
+
+    assembly.svg.selectAll("circle")
+        .transition(t)
+        .attr("cy", function(d) { return assembly.dim.yscale(d3.select(this).attr("contig")) + assembly.dim.yscale.bandwidth()/2; });
+
+    assembly.svg.selectAll("path.contig_link")
+        .transition(t)
+        .attr("d", d3.linkHorizontal()
+                     .x(function(d) { return d.x == -1 ? 0 : dim.xscale(d.x); })
+                     .y(function(d) { return assembly.dim.yscale(d.y) + assembly.dim.yscale.bandwidth()/2; })
+        );
+
+    assembly.svg.selectAll("rect.contig_alignment.self")
+        .transition(t)
+        .attr("y", function(d) { return assembly.dim.yscale(d3.select(this).attr("contig1")) + assembly.dim.yscale.bandwidth(); });
+
+    assembly.svg.selectAll("rect.contig_alignment.other")
+        .transition(t)
+        .attr("y", function(d) { return assembly.dim.yscale(d3.select(this).attr("contig2")) + assembly.dim.yscale.bandwidth(); });
+
+}
+
+function update_assembly(sort=false) {
+    if (sort) {
+        $('#contig_table').bootstrapTable('multipleSort');
+    }
+    reorder_assembly(contigs, assembly, dim);
+    $('#assembly_table').bootstrapTable("load", calculate_stats(contigs));
+}
+
+function include_checkbox(value) {
+    return '<input type="checkbox" ' + (value==true ? ' checked ' : '' ) + '</input>';
+}
+
+function DoCellData(cell, rowIndex, colIndex, htmlData) {
+    var retVal = htmlData;
+    if (htmlData.includes('checkbox')) {
+        if (htmlData.includes('checked')) {
+            retVal = "yes";
+        } else {
+            retVal = "no";
+        }
+    }
+    return retVal;
 }
 
 var max_read_depth = 0;
@@ -739,91 +821,9 @@ dim.xscale = d3.scaleLinear()
 
 var xaxis = d3.axisBottom(dim.xscale);
 
+assembly = build_assembly_plot(contigs, dim, windowsize);
 
-var assembly_dim = {height: contigs.length * 29};
-
-assembly_dim.yscale = d3.scaleBand()
-                      .domain(contigs.map(d => d.name))
-                      .rangeRound([0, assembly_dim.height])
-                      .paddingInner(0.8)
-                      .paddingOuter(0.4);
-
-assembly_dim.ploidyscale = d3.scaleSequential(d3.interpolateGreens);
-assembly_dim.gcscale = d3.scaleSequential(d3.interpolateRainbow);
-assembly_dim.depthscale = d3.scaleSequential(d3.interpolateGreys);
-assembly_dim.clusterscale = d3.scaleOrdinal(d3.schemeDark2);
-
-
-var assembly_svg = d3.select("#contigs_plot")
-            .append("svg")
-            .attr("width", dim.width + dim.margin.left + dim.margin.right/2)
-            .attr("height", assembly_dim.height + dim.margin.top + dim.margin.bottom)
-            .append("g")
-            .attr("transform", "translate(" + dim.margin.left + "," + (dim.margin.top + assembly_dim.height) + ")")
-            .call(xaxis)
-            .attr("class", "xaxis")
-            .append("g")
-            .attr("transform", "translate(0,-" + assembly_dim.height + ")")
-            .call(d3.axisLeft(assembly_dim.yscale))
-            .attr("class", "yaxis");
-
-assembly_svg
-    .selectAll(".tick")
-    .on("click", function(d) { show_contig_alignments(d, assembly_svg); })
-
-assembly_svg.append("text")
-    .attr("class", "xaxislabel")
-    .attr("transform", "translate(" + (dim.width/2) + " ," + (assembly_dim.height + 45) + ")")
-    .style("text-anchor", "middle")
-    .attr("fill", "black")
-    .text("Position (bp)");
-
-
-
-var contig_groups = assembly_svg.selectAll("g.contig")
-    .data(contigs, function(d) { return d.name })
-    .enter()
-    .append("g")
-    .attr("class", "contig")
-    .attr("name", function(d) { return d.name })
-    .attr("longname", function(d) { return d.longname })
-    .attr("length", function(d) { return d.length })
-    .each(function(d) { build_contig(d3.select(this), dim, assembly_dim, windowsize); });
-
-
-var reads_dim = { height: 300 };
-
-reads_dim.yscale = d3.scaleLinear()
-                     .domain([0, max_read_depth])
-                     .range([reads_dim.height, 0]);
-
-yaxis = d3.axisLeft(reads_dim.yscale)
-
-reads_svg = build_reads_plot(read_alignments, dim, reads_dim, assembly_dim, ploidy_depths)
-
-function update_assembly(sort=false) {
-    if (sort) {
-        $('#contig_table').bootstrapTable('multipleSort');
-    }
-    reorder_assembly(contigs, assembly_dim, assembly_svg);
-    $('#assembly_table').bootstrapTable("load", calculate_stats(contigs));
-}
-
-function include_checkbox(value) {
-    return '<input type="checkbox" ' + (value==true ? ' checked ' : '' ) + '</input>';
-}
-
-function DoCellData(cell, rowIndex, colIndex, htmlData) {
-    var retVal = htmlData;
-    if (htmlData.includes('checkbox')) {
-        if (htmlData.includes('checked')) {
-            retVal = "yes";
-        } else {
-            retVal = "no";
-        }
-    }
-    return retVal;
-}
+reads = build_reads_plot(read_alignments, dim, max_read_depth, assembly, ploidy_depths);
 
 $.fn.editable.defaults.mode = 'inline';
 $('#options_table').bootstrapTable({data: options});
@@ -839,7 +839,7 @@ $('#contig_table').bootstrapTable({
     data: contigs,
     onPostBody: function() { update_assembly() },
     onCheck: function(row) {
-        plot_read_alignments(read_alignments[row.longname], dim, assembly_dim, reads_dim, reads_svg, contig_names[row.longname]);
+        plot_read_alignments(read_alignments[row.longname], dim, reads, contig_names[row.longname]);
     },
     onClickCell: function(field, value, row, $element) {
         if (field === 'included') {
