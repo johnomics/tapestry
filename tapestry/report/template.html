@@ -270,6 +270,11 @@ contigs.forEach(function(contig) {
     }
 })
 
+var unit = 'bp';
+if (max_contig_length > 2000000) {
+    unit = "Mb";
+}
+
 var contig_links = {};
 for (var contig_name_long in contig_alignments) {
     contig_name_short = contig_names[contig_name_long];
@@ -403,7 +408,7 @@ function contig_text_unhover() {
     reads.svg.selectAll("text.alignment.text").remove()
 }
 
-function build_assembly_plot(contigs, dim, windowsize) {
+function build_assembly_plot(contigs, dim, windowsize, xaxis, unit) {
 
     var assembly = {};
     assembly.dim = {height: contigs.length * 29};
@@ -441,7 +446,7 @@ function build_assembly_plot(contigs, dim, windowsize) {
         .attr("transform", "translate(" + (dim.width/2) + " ," + (assembly.dim.height + 45) + ")")
         .style("text-anchor", "middle")
         .attr("fill", "black")
-        .text("Position (bp)");
+        .text("Position (" + unit + ")");
     
     assembly.svg.selectAll("g.contig")
         .data(contigs, function(d) { return d.name })
@@ -456,7 +461,7 @@ function build_assembly_plot(contigs, dim, windowsize) {
     return assembly;
 }
 
-function build_reads_plot(read_alignments, dim, max_read_depth, assembly, ploidy_depths) {
+function build_reads_plot(read_alignments, dim, max_read_depth, assembly, ploidy_depths, xaxis) {
 
     var reads = {};
     
@@ -527,7 +532,7 @@ function build_reads_plot(read_alignments, dim, max_read_depth, assembly, ploidy
     return reads;
 }
 
-function plot_read_alignments(alignments, dim, reads, contig) {
+function plot_read_alignments(alignments, dim, reads, contig, unit) {
 
     // contig_read_alignments:
     //  0 read start including left clip
@@ -548,7 +553,7 @@ function plot_read_alignments(alignments, dim, reads, contig) {
        .attr("transform", "translate(" + (dim.width/2) + " ," + (reads.dim.height + 45) + ")")
        .style("text-anchor", "middle")
        .attr("fill", "black")
-       .text(contig + " Position (bp)");
+       .text(contig + " Position (" + unit + ")");
 
     reads.svg.selectAll("line.contig_boundary").remove()
        
@@ -845,11 +850,18 @@ dim.xscale = d3.scaleLinear()
                .domain([min_x_pos-leftpad, max_x_pos])
                .range([0, dim.width]);
 
-var xaxis = d3.axisBottom(dim.xscale);
 
-assembly = build_assembly_plot(contigs, dim, windowsize);
+var xaxis = d3.axisBottom(dim.xscale)
+              .tickFormat(function (d) {
+    if (max_x_pos > 2000000) {
+        return d3.format(",.1f")(d/1000000)
+    }
+    return d3.format(",.0f")(d)
+});
 
-reads = build_reads_plot(read_alignments, dim, max_read_depth, assembly, ploidy_depths);
+assembly = build_assembly_plot(contigs, dim, windowsize, xaxis, unit);
+
+reads = build_reads_plot(read_alignments, dim, max_read_depth, assembly, ploidy_depths, xaxis);
 
 $.fn.editable.defaults.mode = 'inline';
 $('#options_table').bootstrapTable({data: options});
@@ -865,7 +877,7 @@ $('#contig_table').bootstrapTable({
     data: contigs,
     onPostBody: function() { update_assembly() },
     onCheck: function(row) {
-        plot_read_alignments(read_alignments[row.longname], dim, reads, contig_names[row.longname]);
+        plot_read_alignments(read_alignments[row.longname], dim, reads, contig_names[row.longname], unit);
     },
     onClickCell: function(field, value, row, $element) {
         if (field === 'included') {
