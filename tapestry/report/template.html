@@ -131,6 +131,7 @@ SOFTWARE.
     
     <hr/>
     <h2><a name="assembly">Assembly</a></h2>
+    <p>Selected and rejected contigs are those checked and unchecked in the <a href="#contigs">contig table</a> Keep column below.</p>
     <div class="section">
       <table id="assembly_table" style="width: auto" data-sort-order="asc">
         <thead>
@@ -148,7 +149,9 @@ SOFTWARE.
     
     <div style="margin-top:20px">
       <h2><a name="contigs">Contigs</a></h2>
-      <p><strong>Usage:</strong> Click on contig names in the plot to show contig alignments. Click on a radio button in the table to show read alignments for the selected contig.</p>
+      <p><span style="color:red">Red circles</span> show telomeres. Opacity of red circles reflects the number of telomere sequences found at each contig end. <span style="color:green">Green blocks</span> show ploidy levels; see <a href="#reads">read alignment plot</a> for key.</p>
+      <p>Click on a table radio button to show <a href="#reads">read alignments</a> for the selected contig.</p>
+      <p>Click on plot contig names to show contig alignments. Hover over <span style="color:blue; opacity:0.3">blue alignment blocks</span> to show connecting alignments. The selected contig is shown with a dashed black line. <span style="color:purple">Purple lines</span> show contigs with alignments to the selected contig. The opacity of each purple line shows the percentage of the selected contig found in the aligned contig. Dark lines suggest the selected contig is mostly contained in the aligned contig.
       <div class="section">
           <div id="contigs_plot"></div>
           <table id="contig_table">
@@ -172,6 +175,14 @@ SOFTWARE.
     <h2><a name="reads">Read Alignments</a></h2>
     <div class="section">
       <div id="read_alignment_plot"></div>
+      <div style="margin-left: 20px; margin-top: 65px; width: 550px;">
+        <p>The contig selected by radio button in the <a href="#contigs">contig table</a> is shown.</p>
+        <p>Read alignments are shown in <span style="color:blue">blue</span>.</p>
+        <p>Clipped parts of reads with no alignments are shown in <span style="color:wheat">beige</span>.</p>
+        <p>Where parts of reads align elsewhere, lengths of unaligned read sequence connecting to neighbouring alignments are shown for alignments to the <br><span style="color:slategray">same contig</span> or <span style="color:mediumorchid">different contigs</span>.</p>
+        <p>Hover over alignments to show names of connecting contigs (or '-' if none).</p>
+        <p>Alignment opacity shows mapping quality; darker alignments are higher quality.</p>
+      </div>
     </div>
     <hr/>
     
@@ -370,7 +381,7 @@ function clip_colour(type) {
     } else if (type === 'L') { // Loose
         return 'wheat'
     } else if (type === 'S') { // Self (within-contig)
-        return 'palegoldenrod'
+        return 'slategray'
     } else {
         return 'black'
     }
