@@ -78,10 +78,6 @@ def get_args(arglist=[], description="", scriptargs=[]):
 
     args = parser.parse_args(arglist)
 
-    if args.version:
-        versions()
-        sys.exit()
-
     log.basicConfig(format="%(asctime)s %(levelname)s\t%(message)s", datefmt="%Y-%m-%d %H:%M:%S", level=log.INFO)
 
     if args.cores < 1:
