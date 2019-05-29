@@ -69,7 +69,7 @@ def get_args(arglist=[], description="", scriptargs=[]):
         exec(f'parser.add_argument({scriptarg})')
 
     parser.add_argument('-c', '--cores', help="number of parallel cores to use (default 1)", type=int, default=1)
-    parser.add_argument('-v', '--version', help="report version number and exit", action="store_true")
+    parser.add_argument('-v', '--version', help="report version number and exit", action="version", version=f"Tapestry version {__version__}")
 
     # If no arguments, print usage message
     if not arglist:
@@ -133,7 +133,6 @@ def weave_welcome(arglist=[]):
 
 def versions():
 
-    log.getLogger().setLevel(log.INFO) # Suppress plumbum DEBUG messages
     print(f"Tapestry version {__version__}")
 
     version_message = "Dependencies\n"
