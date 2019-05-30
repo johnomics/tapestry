@@ -160,7 +160,8 @@ class Assembly():
                     SeqIO.write(rec, assembly_out, "fasta")
 
             assembly_in.close()
-            assembly_out.close()
+            if not assembly_found:
+                assembly_out.close()
 
             if len(contigs) == 0:
                 log.error(f"Could not load any contigs from {self.assemblyfile}. Is this a valid FASTA file?")

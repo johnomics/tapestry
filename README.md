@@ -9,7 +9,18 @@ The report is intended to be shared with collaborators to explain the genome ass
 Tapestry is designed for use with small eukaryotic genome assemblies, perhaps less than 50 Mb and less than 100 contigs. It will run on larger genomes (particularly with the -n option, see below), but it may be slow.
 
 ## Getting started
+
+### Installation
+Tapestry is in the [Bioconda](https://bioconda.github.io) repository. If you are set up to use Bioconda (see [Install conda](https://bioconda.github.io/#install-conda) and [Set up channels](https://bioconda.github.io/#set-up-channels)), install with `conda`:
+
+```
+conda install tapestry
+```
+
+
 ### Requirements
+
+Tapestry requires the following packages and tools (which will be installed by `conda` automatically):
 
 - Linux or macOS
 - Python 3.6 or later
@@ -31,10 +42,6 @@ Python packages:
 - sqlalchemy
 - tqdm
 
-### Installation
-```
-git clone https://github.com/johnomics/tapestry
-```
 
 ### Basic usage
 
