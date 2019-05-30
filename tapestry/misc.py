@@ -88,7 +88,7 @@ def get_args(arglist=[], description="", scriptargs=[]):
 
 
 def get_weave_args(arglist=[]):
-    args = get_args(sys.argv[1:], 
+    args = get_args(arglist, 
            "weave: assess quality of one genome assembly",
            ["'-a', '--assembly', help='filename of assembly in FASTA format (required)', type=str, required=True",
             "'-r', '--reads', help='filename of long reads in FASTQ format (required; must be gzipped)', type=str, required=True",
@@ -99,12 +99,16 @@ def get_weave_args(arglist=[]):
             "'-n', '--noreadoutput', help='do not output read alignments in report (default False)', action='store_true'",
             "'-o', '--output', help='directory to write output, default weave_output', type=str, default='weave_output'"])
 
-    if not is_fasta(args.assembly):
-        log.error("Assembly file must be in unzipped FASTA format")
+    if not file_exists(args.assembly):
+        log.error(f"Assembly file {args.assembly} does not exist")
         sys.exit()
-    
+
+    if not file_exists(args.reads):
+        log.error(f"Reads file {args.reads} does not exist")
+        sys.exit()
+
     if not is_gz_file(args.reads):
-        log.error("Reads FASTQ file must be gzipped")
+        log.error(f"Reads file {args.reads} must be gzipped")
         sys.exit()
 
     return args
@@ -164,12 +168,6 @@ def file_exists(filename, deps=[]):
 def is_gz_file(filepath):
     with open(filepath, 'rb') as test_f:
         return binascii.hexlify(test_f.read(2)) == b'1f8b'
-
-
-def is_fasta(filename):
-    with open(filename, "r") as handle:
-        fasta = SeqIO.parse(handle, "fasta")
-        return any(fasta)  # False when `fasta` is empty, i.e. wasn't a FASTA file
 
 
 def cached_property(function):

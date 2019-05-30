@@ -11,6 +11,7 @@ setup(
     package_data={
         'tapestry': ['report/template.html', 'report/static/*.js'],
     },
+    test_suite = 'test',
     scripts=['weave', 'clean'],
     python_requires='>=3.6',
 )

@@ -46,7 +46,7 @@ from jinja2 import Environment, FileSystemLoader
 
 from .contig import Contig, process_contig, get_ploidy
 from .alignments import Alignments
-from .misc import cached_property, setup_output, include_file, report_folder, tapestry_tqdm, file_exists
+from .misc import cached_property, setup_output, include_file, report_folder, tapestry_tqdm, file_exists, is_gz_file
 from .misc import minimap2, samtools
 from ._version import __version__
 
@@ -136,13 +136,20 @@ class Assembly():
         contig_ids = {}
         assembly_found = file_exists(self.filenames['assembly'])
         if assembly_found:
-            log.info(f"Will use existing {self.filenames['assembly']}")
+            log.info(f"Found {self.filenames['assembly']}, will not overwrite")
 
         try:
             log.info(f"Loading genome assembly")
             assembly_out = open(self.filenames['assembly'], 'w') if not assembly_found else None
             contig_id = 0
-            for rec in SeqIO.parse(open(self.assemblyfile, 'r'), "fasta"):
+            
+            assembly_in = None
+            if is_gz_file(self.assemblyfile):
+                assembly_in = gzopen(self.assemblyfile, 'rt')
+            else:
+                assembly_in = open(self.assemblyfile, 'r')
+
+            for rec in SeqIO.parse(assembly_in, "fasta"):
                 rec.seq = rec.seq.upper()
                 orig_name = rec.id
                 rec.id = f"{self.outdir}_{rec.id}"
@@ -151,10 +158,19 @@ class Assembly():
                 contig_id += 1
                 if not assembly_found:
                     SeqIO.write(rec, assembly_out, "fasta")
+
+            assembly_in.close()
+            assembly_out.close()
+
+            if len(contigs) == 0:
+                log.error(f"Could not load any contigs from {self.assemblyfile}. Is this a valid FASTA file?")
+                sys.exit()
+
         except IOError:
             log.error(f"Can't load assembly from file {self.assemblyfile}!")
             sys.exit()
 
+        log.info(f"Loaded {len(contigs)} contigs from {self.assemblyfile}")
         # Add dictionary of contig IDs to every contig
         for c in contigs:
             contigs[c].contig_ids = contig_ids
