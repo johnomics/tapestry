@@ -38,7 +38,7 @@ from tqdm import tqdm
 
 from sqlalchemy import create_engine, MetaData, Table, Column, ForeignKey, func
 from sqlalchemy import Integer, String, Boolean
-from sqlalchemy.sql import select, and_, or_, bindparam, text
+from sqlalchemy.sql import select, and_, or_, bindparam, text, desc
 
 from .misc import file_exists
 
@@ -438,8 +438,11 @@ class Alignments():
             or_(self.alignments.c.alntype=='primary', self.alignments.c.alntype=='supplementary')
         ))
         stmt = self.alignments_in_region(stmt, contig, "read", region_start, region_end)
+        stmt = stmt.order_by(desc(self.alignments.c.aligned_length)) # Order by longest first; see below
         results = self.engine.connect().execute(stmt).fetchall()
-        region_reads = set([r[0] for r in results])
+
+        # Filter to longest 999 alignments to avoid SQLITE_MAX_VARIABLE_NUMBER limits
+        region_reads = set([r[0] for r in results[:999]])
 
         # Get connecting alignments on other contigs for these reads
         stmt = (select([self.alignments.c.contig, self.alignments.c.ref_start, self.alignments.c.ref_end])
