@@ -11,12 +11,18 @@ Tapestry is designed for use with small eukaryotic genome assemblies, perhaps le
 ## Getting started
 
 ### Installation
-Tapestry is in the [Bioconda](https://bioconda.github.io) repository. If you are set up to use Bioconda (see [Install conda](https://bioconda.github.io/#install-conda) and [Set up channels](https://bioconda.github.io/#set-up-channels)), install with `conda`:
+Tapestry is in the [Bioconda](https://bioconda.github.io) repository. If you are set up to use Bioconda (see [Install conda](https://bioconda.github.io/#install-conda) and [Set up channels](https://bioconda.github.io/#set-up-channels)), install the latest release with `conda`:
 
 ```
 conda install tapestry
 ```
 
+If you want to install the latest commit, make sure the requirements below are satisfied (or a previous release is installed with conda), and then pull from github and install:
+```
+git clone https://github.com/johnomics/tapestry
+cd tapestry
+python setup.py install
+```
 
 ### Requirements
 
