@@ -35,7 +35,6 @@ Python packages:
 - networkx
 - numpy
 - pandas
-- pigz
 - plumbum
 - pysam
 - scikit-learn >= 0.20
