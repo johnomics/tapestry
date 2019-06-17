@@ -70,6 +70,7 @@ class Assembly():
         self.telomere_seqs = ' '.join(telomeres[0]) if telomeres else ''
         self.telomeres = [motifs.create([Seq(t[0])]) for t in telomeres] if telomeres else None
         self.outdir = outdir
+        self.basedir = os.path.basename(outdir)
         self.cores = cores
         self.coverage = coverage
         self.minreadlength = minreadlength
@@ -152,9 +153,9 @@ class Assembly():
             for rec in SeqIO.parse(assembly_in, "fasta"):
                 rec.seq = rec.seq.upper()
                 orig_name = rec.id
-                rec.id = f"{self.outdir}_{rec.id}"
+                rec.id = f"{self.basedir}_{rec.id}"
                 contig_ids[rec.id] = contig_id
-                contigs[rec.id] = Contig(contig_id, rec, orig_name, self.telomeres, self.windowsize, self.outdir, self.filenames)
+                contigs[rec.id] = Contig(contig_id, rec, orig_name, self.telomeres, self.windowsize, self.filenames)
                 contig_id += 1
                 if not assembly_found:
                     SeqIO.write(rec, assembly_out, "fasta")
@@ -340,10 +341,10 @@ class Assembly():
         if not self.noreadoutput:
             read_alignments = {c:self.contigs[c].read_alignments for c in self.contigs}
 
-        with open(f"{self.outdir}/{self.outdir}.tapestry_report.html", 'wt') as html_report:
+        with open(f"{self.outdir}/{self.basedir}.tapestry_report.html", 'wt') as html_report:
             print(template.render(
                     windowsize = self.windowsize,
-                    outdir = self.outdir,
+                    outdir = self.basedir,
                     assemblyfile = os.path.basename(self.assemblyfile),
                     options = json.dumps(self.options()),
                     contigs = json.dumps([self.contigs[c].json() for c in self.contigs]),

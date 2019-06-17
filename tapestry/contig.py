@@ -56,14 +56,13 @@ def get_ploidy(contig, median_depth=None):
 
 class Contig:
 
-    def __init__(self, cid, rec, orig_name, telomeres, windowsize, outdir, filenames):
+    def __init__(self, cid, rec, orig_name, telomeres, windowsize, filenames):
         self.id = cid
         self.name = rec.id
         self.orig_name = orig_name
         self.rec = rec
         self.telomeres = telomeres
         self.windowsize = windowsize
-        self.outdir = outdir
         self.filenames = filenames
 
 
