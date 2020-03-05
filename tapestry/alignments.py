@@ -65,7 +65,7 @@ class Alignments():
         return matches[0][0] > (windows[0][0] * 0.5)
 
 
-    def load(self, reads_bam, contigs_bam, reference, windowsize):
+    def load(self, reads_bam, contigs_bam, reference, windowsize, readoutput, min_contig_alignment):
         self.windowsize = windowsize
 
         db_exists = file_exists(self.db_filename, deps=[reads_bam, contigs_bam])
@@ -79,9 +79,10 @@ class Alignments():
             self.metadata.create_all(self.engine)
 
             self.load_reference(reference)
-            self.load_alignments(contigs_bam, 'contig')
+            self.load_alignments(contigs_bam, 'contig', min_contig_alignment)
             self.load_alignments(reads_bam, 'read')
-            self.find_neighbours()
+            if readoutput:
+                self.find_neighbours()
 
 
     def tables(self):
@@ -149,7 +150,7 @@ class Alignments():
             log.error(f"Failed to add assembly to alignments database {self.db_filename}")
 
 
-    def load_alignments(self, bam_filename, query_type=None):
+    def load_alignments(self, bam_filename, query_type=None, min_contig_alignment=None):
         if not file_exists(bam_filename):
             log.error(f"No up-to-date {bam_filename} file, will not process {query_type} alignments")
             return
@@ -168,13 +169,12 @@ class Alignments():
                 for aln in bam.fetch(until_eof=True): # until_eof includes unmapped reads
                     alntype                      = self.get_alignment_type(aln)
                     query_length, aligned_length = self.get_alignment_lengths(aln, alntype)
-            
+                    if min_contig_alignment and aligned_length < min_contig_alignment:
+                        continue
+
                     query_start, query_end, left_clip, right_clip = self.get_query_ends(aln, alntype, query_length)
 
                     if query_type is 'contig' and aln.query_name != aln.reference_name and alntype is not 'unmapped':
-#                        if aln.query_name == aln.reference_name:
-#                            continue
-#                        elif alntype is not 'unmapped':
                             # Insert contig alignment in the other direction
                             aln_id += 1
                             alignment_chunk.append({

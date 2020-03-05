@@ -162,7 +162,7 @@ SOFTWARE.
                 <th data-field="length" data-sortable="true" data-align='right' data-formatter="local_formatter">Length</th>
                 <th data-field="gc" data-sortable="true" data-formatter="gc_formatter" data-align='right'>GC %</th>
                 <th data-field="median_read_depth" data-sortable="true" data-formatter="depth_formatter" data-align='right'>Read Depth</th>
-                <th data-field="cluster" data-sortable="true" data-editable="true" data-align='right'>Cluster</th>
+                <th data-field="group" data-sortable="true" data-editable="true" data-align='right'>Group</th>
                 <th data-field="included" data-sortable="true" data-formatter="include_checkbox" data-align='center'>Keep</th>
                 <th data-field="notes" data-sortable="true" data-editable="true">Notes</th>
               </tr>
@@ -422,7 +422,6 @@ function build_assembly_plot(contigs, dim, windowsize, xaxis, unit) {
     assembly.dim.ploidyscale = d3.scaleSequential(d3.interpolateGreens);
     assembly.dim.gcscale = d3.scaleSequential(d3.interpolateRainbow);
     assembly.dim.depthscale = d3.scaleSequential(d3.interpolateGreys);
-    assembly.dim.clusterscale = d3.scaleOrdinal(d3.schemeDark2);
 
     assembly.svg = d3.select("#contigs_plot")
                 .append("svg")
@@ -476,13 +475,13 @@ function build_reads_plot(read_alignments, dim, max_read_depth, assembly, ploidy
                   .attr("width", dim.width + dim.margin.left + dim.margin.right)
     
     if (isEmpty(read_alignments)) {
-        reads_svg
+        reads.svg = reads.svg
             .attr("height", 20)
             .append("text")
             .attr("y", 15)
             .attr("x", 10)
             .attr("fill", "black")
-            .text("Read alignments are not available in this report (re-run Tapestry without the -n option to include them).")
+            .text("Read alignments are not available in this report (re-run Tapestry with the -f option to include them).")
 
         return reads;
     }
@@ -838,7 +837,6 @@ for (var key in read_alignments) { // If read_alignments is empty, this will be 
     max_x_pos   = check_max(max_x_pos, read_alignments[key], 3);
 }
 
-var max_cluster = d3.max(contigs.map(c => c.cluster))
 var max_contig_name_length = d3.max(contigs.map(c => c.name.length))
 var dim = { margin: {top: 100, right: 80, bottom: 70, left: d3.max([max_contig_name_length * 10, 60]) } };
 
@@ -911,7 +909,7 @@ $('#assembly_csv').change(function() {
             if (hf === 'Length') return 'length';
             if (hf === 'GC %') return 'gc';
             if (hf === 'Read Depth') return 'median_read_depth';
-            if (hf === 'Cluster') return 'cluster';
+            if (hf === 'Group') return 'group';
             if (hf === 'Keep') return 'included';
             if (hf === 'Notes') return 'notes';
             return hf;
@@ -945,9 +943,9 @@ $('#assembly_csv').change(function() {
                 return csv_names.indexOf(a.name) - csv_names.indexOf(b.name);
             })
             
-            // contigs and results now in same order, so update cluster, included and notes
+            // contigs and results now in same order, so update group, included and notes
             for (var i=0; i < results.data.length; i++) {
-                contigs[i].cluster = results.data[i].cluster;
+                contigs[i].group = results.data[i].group;
                 contigs[i].included = results.data[i].included;
                 contigs[i].notes = results.data[i].notes;
             }

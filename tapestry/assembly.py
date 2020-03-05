@@ -64,7 +64,7 @@ filenames = {
 
 class Assembly():
 
-    def __init__(self, assemblyfile, readfile, telomeres, outdir, cores, coverage, minreadlength, windowsize, noreadoutput):
+    def __init__(self, assemblyfile, readfile, telomeres, outdir, cores, coverage, minreadlength, windowsize, forcereadoutput, mincontigalignment):
         self.assemblyfile = assemblyfile
         self.readfile = readfile
         self.telomere_seqs = ' '.join(telomeres[0]) if telomeres else ''
@@ -75,13 +75,18 @@ class Assembly():
         self.coverage = coverage
         self.minreadlength = minreadlength
         self.windowsize = windowsize
-        self.noreadoutput = noreadoutput
+        self.forcereadoutput = forcereadoutput
+        self.min_contig_alignment = mincontigalignment
 
         setup_output(self.outdir)
         self.filenames = {file_key:f"{self.outdir}/{filenames[file_key]}" for file_key in filenames}
 
         self.contigs = self.load_assembly()
 
+        self.readoutput = len(self) < 50000000 or self.forcereadoutput
+        for contig in self.contigs:
+            self.contigs[contig].readoutput = self.readoutput
+        
         if self.readfile:
             self.sample_reads()
             self.align_to_assembly('reads')
@@ -95,8 +100,6 @@ class Assembly():
         self.process_contigs()
 
         self.get_ploidys()
-
-        self.cluster_contigs()
 
 
     def __len__(self):
@@ -129,7 +132,8 @@ class Assembly():
             {'option': 'Genome coverage',          'value': self.coverage      },
             {'option': 'Minimum read length',      'value': self.minreadlength },
             {'option': 'Window size',              'value': self.windowsize    },
-            {'option': 'Read alignments included', 'value': not self.noreadoutput  }
+            {'option': 'Minimum contig alignment', 'value': self.min_contig_alignment },
+            {'option': 'Read alignments included', 'value': self.readoutput  }
         ]
 
     def load_assembly(self):
@@ -269,7 +273,7 @@ class Assembly():
 
     def load_alignments(self):
         alignments = Alignments(self.filenames['alignments'])
-        alignments.load(self.filenames['reads_bam'], self.filenames['contigs_bam'], self.contigs, self.windowsize)
+        alignments.load(self.filenames['reads_bam'], self.filenames['contigs_bam'], self.contigs, self.windowsize, self.readoutput, self.min_contig_alignment)
         return alignments
 
 
@@ -288,37 +292,13 @@ class Assembly():
                 self.contigs[contig.name] = contig
 
 
-    def cluster_contigs(self):
-        log.info(f"Clustering contigs")
-        self.assembly_graph = nx.Graph()
-        for contig in self.contigs:
-            self.assembly_graph.add_node(contig)
-
-        for contig in self.contigs:
-            for connector in self.contigs[contig].left_connectors + self.contigs[contig].right_connectors:
-                connector_contig = connector.split(':')[0]
-
-                if self.assembly_graph.has_edge(contig, connector_contig):
-                    self.assembly_graph[contig][connector_contig]['links'] += 1
-                else:
-                    self.assembly_graph.add_edge(contig, connector_contig, links=1)
-
-        self.components = []
-        for c in nx.connected_components(self.assembly_graph):
-            self.components.append(self.assembly_graph.subgraph(c).nodes())
-
-        for i, component in enumerate(sorted(self.components, key=lambda c: len(c), reverse=True)):
-            for contig in sorted(component):
-                self.contigs[contig].cluster = i+1
-
-
     def contig_report(self):
         log.info(f"Generating contig details")
 
         try:
             with open(f"{self.outdir}/contig_details.tsv", 'wt') as report_file:
-                print("Cluster\tContig\tLength\tGC%\tMedianReadDepth\tStartTelomeres\tEndTelomeres\tStartMeanReadOverhangBases\tEndMeanReadOverhangBases\tUniqueBases\tUnique%\tCategory\tPloidys\tStartConnectors\tEndConnectors", file=report_file)
-                for contigname in sorted(self.contigs, key=lambda c: (self.contigs[c].cluster, -len(self.contigs[c]))):
+                print("Contig\tLength\tGC%\tMedianReadDepth\tStartTelomeres\tEndTelomeres\tStartMeanReadOverhangBases\tEndMeanReadOverhangBases\tUniqueBases\tUnique%\tCategory\tPloidys\tStartConnectors\tEndConnectors", file=report_file)
+                for contigname in sorted(self.contigs, key=lambda c: -len(self.contigs[c])):
                     print(self.contigs[contigname].report(self.gc), file=report_file)
         except IOError:
             log.error(f"Could not write contig report")
@@ -338,7 +318,7 @@ class Assembly():
                 contig_coverage[self.contigs[c1].id][self.contigs[c2].id] = self.contigs[c1].contig_coverage[c2]
 
         read_alignments = {}
-        if not self.noreadoutput:
+        if self.readoutput:
             read_alignments = {c:self.contigs[c].read_alignments for c in self.contigs}
 
         with open(f"{self.outdir}/{self.basedir}.tapestry_report.html", 'wt') as html_report:

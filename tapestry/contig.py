@@ -67,8 +67,7 @@ class Contig:
 
 
     def report(self, assembly_gc):
-        report = f"{self.cluster}"
-        report += f"\t{self.name}"
+        report = f"{self.name}"
         report += f"\t{len(self)}"
         report += f"\t{self.gc:.1f}"
         report += f"\t{self.median_read_depth:.1f}"
@@ -89,7 +88,7 @@ class Contig:
     def json(self):
         return {
             'id': self.id,
-            'cluster': self.cluster,
+            'group': 'None',
             'longname' : self.name,
             'name': self.orig_name,
             'length': len(self),
@@ -302,10 +301,11 @@ class Contig:
     def get_connectors(self):
         left_connectors = right_connectors = []
 
-        if self.completeness() in ['R', '-']:
-            left_connectors = self.get_region_connectors(0, 10000)
-        if self.completeness() in ['L', '-']:
-            right_connectors = self.get_region_connectors(len(self)-10000, len(self)-1)
+        if self.readoutput:
+            if self.completeness() in ['R', '-']:
+                left_connectors = self.get_region_connectors(0, 10000)
+            if self.completeness() in ['L', '-']:
+                right_connectors = self.get_region_connectors(len(self)-10000, len(self)-1)
 
         return left_connectors, right_connectors
 
@@ -324,6 +324,10 @@ class Contig:
 
     def plot_read_alignments(self):
         read_alignments = []
+        
+        if not self.readoutput:
+            return read_alignments
+
         plot_row_ends = []
         if self.alignments.read_alignments(self.name) is None:
             return read_alignments

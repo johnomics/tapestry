@@ -42,7 +42,7 @@ if __name__ == '__main__':
 
     weave_welcome(args)
 
-    assembly = Assembly(args.assembly, args.reads, args.telomere, args.output, args.cores, args.depth, args.length, args.windowsize, args.noreadoutput)
+    assembly = Assembly(args.assembly, args.reads, args.telomere, args.output, args.cores, args.depth, args.length, args.windowsize, args.forcereadoutput, args.mincontigalignment)
 
     assembly.report()
 
