@@ -134,7 +134,7 @@ class Alignments():
                     contig_rows.append({'name'  : reference[contig].name,
                                         'length': contig_length})
 
-                    for start in range(1, contig_length, int(self.windowsize/2)):
+                    for start in range(1, contig_length, int(self.windowsize)):
                         end = min(start + self.windowsize - 1, contig_length)
             
                         ranges_rows.append({'contig' : reference[contig].name,

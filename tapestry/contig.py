@@ -238,7 +238,6 @@ class Contig:
     def get_ploidys(self, ploidy_depths):
 
         empty_ploidys = [0] * len(self.read_depths)
-        # Can't fit model with fewer windows than components
         if sum(ploidy_depths) == 0: 
             return empty_ploidys
 

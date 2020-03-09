@@ -175,7 +175,7 @@ SOFTWARE.
     <h2><a name="reads">Read Alignments</a></h2>
     <div class="section">
       <div id="read_alignment_plot"></div>
-      <div style="margin-left: 20px; margin-top: 65px; width: 550px;">
+      <div id="read_alignment_text" style="margin-left: 20px; margin-top: 65px; width: 550px;">
         <p>The contig selected by radio button in the <a href="#contigs">contig table</a> is shown.</p>
         <p>Read alignments are shown in <span style="color:blue">blue</span>.</p>
         <p>Clipped parts of reads with no alignments are shown in <span style="color:wheat">beige</span>.</p>
@@ -476,18 +476,6 @@ function build_reads_plot(read_alignments, dim, max_read_depth, assembly, ploidy
     reads.svg = d3.select("#read_alignment_plot")
                   .append("svg")
                   .attr("width", dim.width + dim.margin.left + dim.margin.right)
-    
-    if (isEmpty(read_alignments)) {
-        reads.svg = reads.svg
-            .attr("height", 20)
-            .append("text")
-            .attr("y", 15)
-            .attr("x", 10)
-            .attr("fill", "black")
-            .text("Read alignments are not available in this report (re-run Tapestry with the -f option to include them).")
-
-        return reads;
-    }
 
     reads.svg = reads.svg
         .attr("height", reads.dim.height + 20 + dim.margin.bottom)
@@ -518,7 +506,7 @@ function build_reads_plot(read_alignments, dim, max_read_depth, assembly, ploidy
         .attr("x2", dim.xscale.range()[1])
         .attr("y1", function(d) { return reads.dim.yscale(d.depth) })
         .attr("y2", function(d) { return reads.dim.yscale(d.depth) })
-        .style("stroke", function(d, i) { return ploidy_colour(assembly, i); })
+        .style("stroke", function(d, i) { return ploidy_colour(assembly, i+1); }) //+1 because none is filtered out
         .style("stroke-width", 2)
     
     reads.svg.selectAll("text.ploidy")
@@ -544,10 +532,6 @@ function plot_read_alignments(alignments, dim, reads, contig, unit) {
     //  4 mapping quality
     //  5 y position on plot
 
-    if (isEmpty(read_alignments)) {
-        return;
-    }
-    
     reads.svg.selectAll("text.xaxislabel").remove()
     
     reads.svg.append("text")
@@ -576,6 +560,16 @@ function plot_read_alignments(alignments, dim, reads, contig, unit) {
        .attr("y2", reads.dim.yscale.range()[1] )
        .style("stroke-dasharray", "5,5")
        .style("stroke", "black")
+
+    if (alignments === undefined) {
+        reads.svg = reads.svg.append("text")
+            .attr("x", dim.xscale(0))
+            .attr("y", reads.dim.yscale.range()[1])
+            .style("text-anchor", "start")
+            .attr("fill", "black")
+            .text("Read alignments are not available in this report (re-run Tapestry with the -f option to include them).")
+        return;
+    }
 
     reads.svg.selectAll("line.read_alignment").remove()
 
@@ -747,10 +741,10 @@ function build_contig(contig, dim, assembly, windowsize) {
         .attr("contig", contig.attr("name"))
         .attr("y", function(d) { return assembly.dim.yscale(contig.attr("name")); })
         .attr("height", assembly.dim.yscale.bandwidth())
-        .attr("x", function(d, i) { return dim.xscale(i*(windowsize/2)); }) // windowsize/2 because they are sliding
+        .attr("x", function(d, i) { return dim.xscale(i*windowsize); })
         .attr("width", function(d, i) {
             // either window size or the remainder at the end of the contig; subtract the left contig overhang up to position 0
-            return dim.xscale(d3.min([windowsize, contig.attr("length") - i*(windowsize/2)])) - dim.xscale(0);
+            return dim.xscale(d3.min([windowsize, contig.attr("length")-i*windowsize])) - dim.xscale(0);
         })
         .attr("fill", function(d) { return ploidy_colour(assembly, d); })
         .attr("stroke-opacity", 0);
@@ -839,6 +833,11 @@ for (var key in read_alignments) { // If read_alignments is empty, this will be 
     min_x_pos   = check_min(min_x_pos, read_alignments[key], 0);
     max_x_pos   = check_max(max_x_pos, read_alignments[key], 3);
 }
+
+if (max_read_depth == 0) { // No read alignments, so no max; but still want empty read alignment plot with ploidy levels
+    max_read_depth = median_depth * 3;
+}
+
 
 var max_contig_name_length = d3.max(contigs.map(c => c.name.length))
 var dim = { margin: {top: 100, right: 80, bottom: 70, left: d3.max([max_contig_name_length * 10, 60]) } };
