@@ -120,6 +120,9 @@ class Assembly():
     def median_depth(self):
         return self.read_depths.median() if self.read_depths is not None else 0
 
+    @cached_property
+    def ploidy_depths(self):
+        return [d*self.median_depth for d in [0, 0.5, 1, 1.5, 2, 2.5]]
 
     def options(self):
         return [
@@ -272,8 +275,8 @@ class Assembly():
 
 
     def load_alignments(self):
-        alignments = Alignments(self.filenames['alignments'])
-        alignments.load(self.filenames['reads_bam'], self.filenames['contigs_bam'], self.contigs, self.windowsize, self.readoutput, self.min_contig_alignment)
+        alignments = Alignments(self.filenames['alignments'], self.windowsize)
+        alignments.load(self.filenames['reads_bam'], self.filenames['contigs_bam'], self.contigs, self.readoutput, self.min_contig_alignment)
         return alignments
 
 
@@ -286,7 +289,7 @@ class Assembly():
 
     def get_ploidys(self):
         log.info(f"Calculating ploidy estimates")
-        fit_ploidy = partial(get_ploidy, median_depth=self.median_depth)
+        fit_ploidy = partial(get_ploidy, ploidy_depths=self.ploidy_depths)
         with Pool(self.cores) as p:
             for contig in tapestry_tqdm(p.imap(fit_ploidy, self.contigs.values()), total=len(self.contigs), desc="Ploidy estimates"):
                 self.contigs[contig.name] = contig

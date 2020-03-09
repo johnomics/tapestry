@@ -36,19 +36,20 @@ from collections import namedtuple
 
 from tqdm import tqdm
 
-from sqlalchemy import create_engine, MetaData, Table, Column, ForeignKey, func
-from sqlalchemy import Integer, String, Boolean
+from sqlalchemy import create_engine, MetaData, Table, Column, ForeignKey, func, cast
+from sqlalchemy import Integer, Float, String, Boolean
 from sqlalchemy.sql import select, and_, or_, bindparam, text, desc
 
 from .misc import file_exists
 
 
 class Alignments():
-    def __init__(self, db_filename):
+    def __init__(self, db_filename, windowsize):
         self.db_filename = db_filename
         self.engine = create_engine(f'sqlite:///{db_filename}')
         self.metadata = MetaData(self.engine)
         self.reads, self.contigs, self.ranges, self.alignments = self.tables()
+        self.windowsize = windowsize
 
 
     def windowsize_matches(self):
@@ -65,8 +66,7 @@ class Alignments():
         return matches[0][0] > (windows[0][0] * 0.5)
 
 
-    def load(self, reads_bam, contigs_bam, reference, windowsize, readoutput, min_contig_alignment):
-        self.windowsize = windowsize
+    def load(self, reads_bam, contigs_bam, reference, readoutput, min_contig_alignment):
 
         db_exists = file_exists(self.db_filename, deps=[reads_bam, contigs_bam])
         if db_exists and self.windowsize_matches():
@@ -472,7 +472,9 @@ class Alignments():
         rd = (select([
                 self.ranges.c.contig,
                 self.ranges.c.start,
-                func.count(self.alignments.c.query).label('depth')
+                (cast(func.sum((func.min(self.alignments.c.ref_end,   self.ranges.c.end  ) -
+                         func.max(self.alignments.c.ref_start, self.ranges.c.start)   )), Float) / 
+                         (self.ranges.c.end - self.ranges.c.start + 1)).label('depth')
              ])
               .select_from(self.ranges.join(self.alignments, self.ranges.c.contig == self.alignments.c.contig))
               .where(and_(self.alignments.c.alntype.in_(["primary", "supplementary"]),

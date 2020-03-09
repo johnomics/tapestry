@@ -245,7 +245,8 @@ var ploidys = {{ ploidys }};
 
 var current_aligned_contig = '';
 
-ploidy_depths = [ {name:'haploid',    depth: median_depth * 0.5}, 
+ploidy_depths = [ {name:'none',       depth: 0                 },
+                  {name:'haploid',    depth: median_depth * 0.5}, 
                   {name:'diploid',    depth: median_depth      }, 
                   {name:'triploid',   depth: median_depth * 1.5}, 
                   {name:'tetraploid', depth: median_depth * 2  },
@@ -321,6 +322,8 @@ function info_formatter(value) {
 }
 
 function mq_opacity(mq) { return 0.1 + 0.9*mq/60 }
+
+function ploidy_colour(assembly, ploidy) { return assembly.dim.ploidyscale(0.01 + ploidy/5 * 0.99); }
 
 function isEmpty(obj) {
   return Object.keys(obj).length === 0;
@@ -507,7 +510,7 @@ function build_reads_plot(read_alignments, dim, max_read_depth, assembly, ploidy
         .text("Reads"); 
 
     reads.svg.selectAll("line.ploidy")
-        .data(ploidy_depths.filter(d => d.name != "repeat"))
+        .data(ploidy_depths.filter(d => d.name != "repeat" && d.name != "none"))
         .enter()
         .append("line")
         .attr("class", "ploidy")
@@ -515,7 +518,7 @@ function build_reads_plot(read_alignments, dim, max_read_depth, assembly, ploidy
         .attr("x2", dim.xscale.range()[1])
         .attr("y1", function(d) { return reads.dim.yscale(d.depth) })
         .attr("y2", function(d) { return reads.dim.yscale(d.depth) })
-        .style("stroke", function(d, i) { return assembly.dim.ploidyscale((1+i*0.8)/5); })
+        .style("stroke", function(d, i) { return ploidy_colour(assembly, i); })
         .style("stroke-width", 2)
     
     reads.svg.selectAll("text.ploidy")
@@ -524,7 +527,7 @@ function build_reads_plot(read_alignments, dim, max_read_depth, assembly, ploidy
         .append("text")
         .attr("x", dim.xscale.range()[1] + 10 )
         .attr("y", function(d) { return reads.dim.yscale(d.depth)+2 })
-        .style("fill", function(d, i) { return assembly.dim.ploidyscale((1+i*0.8)/5) })
+        .style("fill", function(d, i) { return ploidy_colour(assembly, i); })
         .style("text-anchor", "start")
         .text(function(d) { return d.name })
     
@@ -598,8 +601,8 @@ function plot_read_alignments(alignments, dim, reads, contig, unit) {
         .attr("class", "read_alignment clip left")
         .attr("x1", function(d) { return dim.xscale(d[0]); })
         .attr("x2", function(d) { return dim.xscale(d[1]); })
-        .attr("y1", function(d) { return reads.dim.yscale(d[5]); })
-        .attr("y2", function(d) { return reads.dim.yscale(d[5]); })
+        .attr("y1", function(d) { return reads.dim.yscale(d[5]+0.1); })
+        .attr("y2", function(d) { return reads.dim.yscale(d[5]+0.1); })
         .style("stroke-opacity", function(d) { return mq_opacity(d[4]); })
         .style("stroke", function(d) { return clip_colour(d[8]); })
         .on("mouseover", function(d) {
@@ -612,8 +615,8 @@ function plot_read_alignments(alignments, dim, reads, contig, unit) {
           .attr("contig_id", function(d) { return d[7]})
           .attr("x1", function(d) { return dim.xscale(d[2]); })
           .attr("x2", function(d) { return dim.xscale(d[3]); })
-          .attr("y1", function(d) { return reads.dim.yscale(d[5]); })
-          .attr("y2", function(d) { return reads.dim.yscale(d[5]); })
+          .attr("y1", function(d) { return reads.dim.yscale(d[5]+0.1); })
+          .attr("y2", function(d) { return reads.dim.yscale(d[5]+0.1); })
           .style("stroke-opacity", function(d) { return mq_opacity(d[4]) })
           .style("stroke", function(d) { return clip_colour(d[9])})
         .on("mouseover", function(d) {
@@ -749,7 +752,7 @@ function build_contig(contig, dim, assembly, windowsize) {
             // either window size or the remainder at the end of the contig; subtract the left contig overhang up to position 0
             return dim.xscale(d3.min([windowsize, contig.attr("length") - i*(windowsize/2)])) - dim.xscale(0);
         })
-        .attr("fill", function(d) { return assembly.dim.ploidyscale((1+d*0.8)/5); })
+        .attr("fill", function(d) { return ploidy_colour(assembly, d); })
         .attr("stroke-opacity", 0);
 
     contig.append("circle")

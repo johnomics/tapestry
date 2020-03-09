@@ -48,8 +48,8 @@ def process_contig(contig):
     contig.process()
     return contig
 
-def get_ploidy(contig, median_depth=None):
-    contig.ploidys = contig.get_ploidys(median_depth)
+def get_ploidy(contig, ploidy_depths=None):
+    contig.ploidys = contig.get_ploidys(ploidy_depths)
     contig.ploidy_pc = contig.get_ploidy_pc()
     return contig
 
@@ -121,7 +121,7 @@ class Contig:
 
     def process(self):
         # Alignments added here for multithreading
-        self.alignments = Alignments(self.filenames['alignments'])
+        self.alignments = Alignments(self.filenames['alignments'], self.windowsize)
 
         self.gc = self.get_gc()
         self.read_depths = self.alignments.depths('read', self.name)
@@ -235,24 +235,23 @@ class Contig:
         return self.unique_bases/len(self) * 100
 
 
-    def get_ploidys(self, median_depth, components=5):
+    def get_ploidys(self, ploidy_depths):
 
         empty_ploidys = [0] * len(self.read_depths)
         # Can't fit model with fewer windows than components
-        if len(self.read_depths) < components or median_depth == 0: 
+        if sum(ploidy_depths) == 0: 
             return empty_ploidys
 
-        model = mixture.BayesianGaussianMixture(n_components=components, max_iter=1000)
-
-        depths = np.array(self.read_depths['depth']).reshape(-1,1)
-
-        warnings.filterwarnings("ignore", category=ConvergenceWarning)
-        labels = model.fit_predict(depths)
-        warnings.resetwarnings()
-
-        haploid_depth = median_depth / 2
-
-        ploidys = [int(round((float(model.means_[l]) / haploid_depth))) for l in labels]
+        ploidys = []
+        for d in self.read_depths['depth']:
+            window_ploidy = 0
+            min_ploidy_diff = None
+            for p, pd in enumerate(ploidy_depths):
+                ploidy_diff = abs(d-pd)
+                if min_ploidy_diff is None or ploidy_diff < min_ploidy_diff:
+                    window_ploidy = p
+                    min_ploidy_diff = ploidy_diff
+            ploidys.append(window_ploidy)
 
         return ploidys
 
@@ -325,13 +324,11 @@ class Contig:
     def plot_read_alignments(self):
         read_alignments = []
         
-        if not self.readoutput:
+        if not self.readoutput or self.alignments.read_alignments(self.name) is None:
             return read_alignments
 
         plot_row_ends = []
-        if self.alignments.read_alignments(self.name) is None:
-            return read_alignments
-                
+
         for i, a in self.alignments.read_alignments(self.name).iterrows():
 
             # Only use neighbour distances if contig is the same;
@@ -344,12 +341,12 @@ class Contig:
             
             start_position = a.ref_start - start_distance
             end_position = a.ref_end + end_distance
-            
+
             assigned_row = None
             for r, row in enumerate(plot_row_ends):
-                if row + 1000 < start_position:
+                if row < a.ref_start:
                     assigned_row = r
-                    plot_row_ends[r] = end_position
+                    plot_row_ends[r] = a.ref_end
                     break
             if assigned_row is None:
                 assigned_row = len(plot_row_ends)
