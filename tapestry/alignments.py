@@ -103,7 +103,7 @@ class Alignments():
             ),
             Table('alignments', self.metadata,
                 Column('id', Integer),
-                Column('query', Integer),
+                Column('query', String),
                 Column('querytype', String),
                 Column('alntype', String),
                 Column('contig', String, ForeignKey('contigs.name')),
@@ -453,7 +453,7 @@ class Alignments():
                )))
 
         read_results = self.engine.connect().execute(stmt).fetchall()
-
+        
         stmt = (select([self.alignments.c.query, self.alignments.c.query_start, self.alignments.c.query_end, self.alignments.c.mq])
                .where(self.alignments.c.querytype=='contig')
                )
