@@ -161,7 +161,11 @@ class Contig:
         for base in "ACGT":
             if base not in basefreqs:
                 basefreqs[base] = 0
-        gc = (sum([basefreqs[b] for b in "GC"]) / sum([basefreqs[b] for b in "ACGT"])) * 100
+        gc_bases = sum([basefreqs[b] for b in "GC"])
+        acgt_bases = sum([basefreqs[b] for b in "ACGT"])
+        gc = 0
+        if acgt_bases > 0:
+            gc = (sum([basefreqs[b] for b in "GC"]) / sum([basefreqs[b] for b in "ACGT"])) * 100
         return gc
 
 
