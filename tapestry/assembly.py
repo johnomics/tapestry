@@ -51,7 +51,7 @@ from .misc import minimap2, samtools
 from ._version import __version__
 
 filenames = {
-    'assembly'         : 'assembly.fasta.gz', 
+    'assembly'         : 'assembly.fasta', 
     'sampled_reads'    : 'reads.fastq.gz', 
     'reads_bam'        : 'reads_assembly.bam',
     'reads_index'      : 'reads_assembly.bam.bai',
@@ -172,32 +172,32 @@ class Assembly():
     def load_assembly(self):
         contigs = {}
         contig_ids = {}
-        assembly_found = file_exists(self.filenames['assembly'])
-        if assembly_found:
-            log.info(f"Found {self.filenames['assembly']}, will not overwrite")
-
+        
         try:
-            log.info(f"Loading genome assembly")
-            assembly_out = gzopen(self.filenames['assembly'], 'wt') if not assembly_found else None
+            log.info("Loading genome assembly")
+            if is_gz_file(self.assemblyfile):
+                self.filenames['assembly'] = f"{self.outdir}/assembly.fasta.gz"
+
+            if file_exists(self.filenames['assembly']):
+                log.info(f"Found {self.filenames['assembly']}, will not overwrite")
+            else:
+                os.symlink(os.path.abspath(self.assemblyfile), self.filenames['assembly'])
+
             contig_id = 0
             
             assembly_in = None
-            if is_gz_file(self.assemblyfile):
-                assembly_in = gzopen(self.assemblyfile, 'rt')
+            if is_gz_file(self.filenames['assembly']):
+                assembly_in = gzopen(self.filenames['assembly'], 'rt')
             else:
-                assembly_in = open(self.assemblyfile, 'r')
+                assembly_in = open(self.filenames['assembly'], 'r')
 
             for rec in SeqIO.parse(assembly_in, "fasta"):
                 rec.seq = rec.seq.upper()
                 contig_ids[rec.id] = contig_id
                 contigs[rec.id] = Contig(contig_id, rec, self.telomeres, self.filenames)
                 contig_id += 1
-                if not assembly_found:
-                    SeqIO.write(rec, assembly_out, "fasta")
 
             assembly_in.close()
-            if not assembly_found:
-                assembly_out.close()
 
             if len(contigs) == 0:
                 log.error(f"Could not load any contigs from {self.assemblyfile}. Is this a valid FASTA file?")
