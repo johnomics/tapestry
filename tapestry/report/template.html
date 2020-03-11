@@ -253,18 +253,16 @@ ploidy_depths = [ {name:'none',       depth: 0                 },
                   {name:'repeat',     depth: median_depth * 2.5} ];
 
 var contig_names = {};
-var contig_short_long = {};
-var contig_id_short = {};
-var contig_short_id = {};
+var contig_id_name = {};
+var contig_name_id = {};
 var contig_lengths = {};
 var max_contig_length = 0;
 contigs.forEach(function(contig) {
     contig.included = 1;
     contig.notes = '';
-    contig_names[contig.longname] = contig.name;
-    contig_short_long[contig.name] = contig.longname;
-    contig_id_short[contig.id] = contig.name;
-    contig_short_id[contig.name] = contig.id;
+    contig_names[contig.name] = contig.name;
+    contig_id_name[contig.id] = contig.name;
+    contig_name_id[contig.name] = contig.id;
     contig_lengths[contig.id] = contig.length;
     if (contig.length > max_contig_length) {
         max_contig_length = contig.length;
@@ -277,22 +275,21 @@ if (max_contig_length > 2000000) {
 }
 
 var contig_links = {};
-for (var contig_name_long in contig_alignments) {
-    contig_name_short = contig_names[contig_name_long];
-    contig_links[contig_name_short] = [];
-    contig_matches = [...new Set(contig_alignments[contig_name_long].map(d => contig_id_short[d[2]]))]
+for (var contig_name in contig_alignments) {
+    contig_links[contig_name] = [];
+    contig_matches = [...new Set(contig_alignments[contig_name].map(d => contig_id_name[d[2]]))]
     contig_matches.forEach(function(contig_match) {
-        if (contig_name_short != contig_match) {
-            contig_links[contig_name_short].push({
-                source: {"x":-1, "y": contig_name_short},
+        if (contig_name != contig_match) {
+            contig_links[contig_name].push({
+                source: {"x":-1, "y": contig_name},
                 target: {"x":0, "y": contig_match},
                 self: false
             });
         }
     })
-    contig_links[contig_name_short].push({
-        source: {"x":-1, "y": contig_name_short},
-        target: {"x":0, "y": contig_name_short},
+    contig_links[contig_name].push({
+        source: {"x":-1, "y": contig_name},
+        target: {"x":0, "y": contig_name},
         self: true
     });
 }
@@ -404,7 +401,7 @@ function contig_text_hover(x, y, contig_id, anchor, dim, reads) {
         .attr("alignment-baseline", "middle")
         .attr("fill", "black")
         .attr("font-size", "10px")
-        .text(contig_id == -1 ? '-' : contig_id_short[contig_id]);
+        .text(contig_id == -1 ? '-' : contig_id_name[contig_id]);
 }
 
 function contig_text_unhover() {
@@ -456,7 +453,6 @@ function build_assembly_plot(contigs, dim, windowsize, xaxis, unit) {
         .append("g")
         .attr("class", "contig")
         .attr("name", function(d) { return d.name })
-        .attr("longname", function(d) { return d.longname })
         .attr("length", function(d) { return d.length })
         .each(function(d) { build_contig(d3.select(this), dim, assembly, windowsize); });
 
@@ -554,8 +550,8 @@ function plot_read_alignments(alignments, dim, reads, contig, unit) {
 
     reads.svg.append("line")
        .attr("class", "contig_boundary")
-       .attr("x1", dim.xscale(contig_lengths[contig_short_id[contig]]) )
-       .attr("x2", dim.xscale(contig_lengths[contig_short_id[contig]]) )
+       .attr("x1", dim.xscale(contig_lengths[contig_name_id[contig]]) )
+       .attr("x2", dim.xscale(contig_lengths[contig_name_id[contig]]) )
        .attr("y1", reads.dim.yscale.range()[0] )
        .attr("y2", reads.dim.yscale.range()[1] )
        .style("stroke-dasharray", "5,5")
@@ -691,18 +687,18 @@ function show_contig_alignments(contig, assembly) {
                     .y(function(d) { return assembly.dim.yscale(d.y) + assembly.dim.yscale.bandwidth()/2; })
         )
         .style("stroke-opacity", function(d) {
-            return d.self ? 1 : 0.1 + 0.9*contig_coverage_prop[contig_short_id[contig]][contig_short_id[d.target.y]];
+            return d.self ? 1 : 0.1 + 0.9*contig_coverage_prop[contig_name_id[contig]][contig_name_id[d.target.y]];
         })
         .style("stroke", function(d) { return d.self ? "black" : "purple"; })
         .style("stroke-dasharray", function(d) { return d.self ? "2,2" : "none" });
 
     assembly.svg.selectAll("rect.contig_alignment.self")
-        .data(contig_alignments[contig_short_long[contig]])
+        .data(contig_alignments[contig])
         .enter()
         .append("rect")
         .attr("class", "contig_alignment self")
         .attr("contig1", contig)
-        .attr("contig2", function(d) { return contig_id_short[d[2]]; })
+        .attr("contig2", function(d) { return contig_id_name[d[2]]; })
         .attr("x", function(d) { return dim.xscale(d[0]); })
         .attr("width", function(d) { return dim.xscale(d[1])-dim.xscale(d[0]); })
         .attr("y", function(d) { return assembly.dim.yscale(contig) + assembly.dim.yscale.bandwidth(); })
@@ -714,15 +710,15 @@ function show_contig_alignments(contig, assembly) {
         .on("mouseout", disconnect_alignments);
 
     assembly.svg.selectAll("rect.contig_alignment.other")
-        .data(contig_alignments[contig_short_long[contig]])
+        .data(contig_alignments[contig])
         .enter()
         .append("rect")
         .attr("class", "contig_alignment other")
         .attr("contig1", contig)
-        .attr("contig2", function(d) { return contig_id_short[d[2]]; })
+        .attr("contig2", function(d) { return contig_id_name[d[2]]; })
         .attr("x", function(d) { return dim.xscale(d[3]); })
         .attr("width", function(d) { return dim.xscale(d[4])-dim.xscale(d[3]); })
-        .attr("y", function(d) { return assembly.dim.yscale(contig_id_short[d[2]]) + assembly.dim.yscale.bandwidth(); })
+        .attr("y", function(d) { return assembly.dim.yscale(contig_id_name[d[2]]) + assembly.dim.yscale.bandwidth(); })
         .attr("height", function(d) { return assembly.dim.yscale.bandwidth(); })
         .style("fill", "blue")
         .style("fill-opacity", 0.1)
@@ -734,7 +730,7 @@ function show_contig_alignments(contig, assembly) {
 function build_contig(contig, dim, assembly, windowsize) {
 
     contig.selectAll("rect.ploidy")
-        .data(ploidys[contig.attr("longname")])
+        .data(ploidys[contig.attr("name")])
         .enter()
         .append("rect")
         .attr("class", "ploidy")
@@ -877,7 +873,7 @@ $('#contig_table').bootstrapTable({
     data: contigs,
     onPostBody: function() { update_assembly() },
     onCheck: function(row) {
-        plot_read_alignments(read_alignments[row.longname], dim, reads, contig_names[row.longname], unit);
+        plot_read_alignments(read_alignments[row.name], dim, reads, contig_names[row.name], unit);
     },
     onClickCell: function(field, value, row, $element) {
         if (field === 'included') {

@@ -29,19 +29,11 @@
 
 import os, re, warnings
 from statistics import mean
-from collections import defaultdict
-
-import numpy as np
+from collections import Counter, defaultdict
 
 from intervaltree import Interval, IntervalTree
 
-from sklearn import mixture
-from sklearn.exceptions import ConvergenceWarning
-
-from Bio.SeqUtils import GC
-
 from .alignments import Alignments
-
 
 # Define process_contig at top level rather than in class so it works with multiprocessing
 def process_contig(contig):
@@ -56,13 +48,11 @@ def get_ploidy(contig, ploidy_depths=None):
 
 class Contig:
 
-    def __init__(self, cid, rec, orig_name, telomeres, windowsize, filenames):
+    def __init__(self, cid, rec, telomeres, filenames):
         self.id = cid
         self.name = rec.id
-        self.orig_name = orig_name
         self.rec = rec
         self.telomeres = telomeres
-        self.windowsize = windowsize
         self.filenames = filenames
 
 
@@ -89,8 +79,7 @@ class Contig:
         return {
             'id': self.id,
             'group': 'None',
-            'longname' : self.name,
-            'name': self.orig_name,
+            'name' : self.name,
             'length': len(self),
             'gc': f"{self.gc:.2f}",
             'median_read_depth': int(self.median_read_depth),
@@ -125,7 +114,6 @@ class Contig:
 
         self.gc = self.get_gc()
         self.read_depths = self.alignments.depths('read', self.name)
-        self.contig_depths = self.alignments.depths('contig', self.name)
         self.median_read_depth = self.median_depth(self.read_depths)
         self.contig_alignments, self.contig_coverage = self.get_contig_alignments()
         self.mean_start_overhang, self.mean_end_overhang = self.get_read_overhangs()
@@ -168,7 +156,13 @@ class Contig:
 
 
     def get_gc(self):
-        return GC(self.rec.seq)
+        # Calculate directly because Biopython GC does not account for gaps
+        basefreqs = Counter(self.rec.seq)
+        for base in "ACGT":
+            if base not in basefreqs:
+                basefreqs[base] = 0
+        gc = (sum([basefreqs[b] for b in "GC"]) / sum([basefreqs[b] for b in "ACGT"])) * 100
+        return gc
 
 
     def median_depth(self, depths):

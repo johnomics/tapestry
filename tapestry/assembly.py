@@ -29,7 +29,6 @@
 
 import os, sys, json, datetime
 import logging as log
-import networkx as nx
 
 from multiprocessing import Pool
 from functools import partial
@@ -37,6 +36,7 @@ from statistics import mean, median
 from collections import defaultdict
 from gzip import open as gzopen
 from tqdm import tqdm
+from math import log10
 
 from Bio import SeqIO, motifs
 from Bio.Seq import Seq
@@ -51,7 +51,7 @@ from .misc import minimap2, samtools
 from ._version import __version__
 
 filenames = {
-    'assembly'         : 'assembly.fasta', 
+    'assembly'         : 'assembly.fasta.gz', 
     'sampled_reads'    : 'reads.fastq.gz', 
     'reads_bam'        : 'reads_assembly.bam',
     'reads_index'      : 'reads_assembly.bam.bai',
@@ -74,7 +74,6 @@ class Assembly():
         self.cores = cores
         self.coverage = coverage
         self.minreadlength = minreadlength
-        self.windowsize = windowsize
         self.forcereadoutput = forcereadoutput
         self.min_contig_alignment = mincontigalignment
 
@@ -82,11 +81,21 @@ class Assembly():
         self.filenames = {file_key:f"{self.outdir}/{filenames[file_key]}" for file_key in filenames}
 
         self.contigs = self.load_assembly()
-
+        
+        self.windowsize = self.get_windowsize(windowsize)
         self.readoutput = len(self) < 50000000 or self.forcereadoutput
+
         for contig in self.contigs:
             self.contigs[contig].readoutput = self.readoutput
-        
+            self.contigs[contig].windowsize = self.windowsize
+            
+        if not self.readoutput or len(self.contigs) > 300:
+            log.warning("Tapestry is designed for small genome assemblies (<50 Mb) that are close to complete (<300 contigs).")
+            log.warning(f"It may not perform well for your {len(self)/1000000:.1f} Mb assembly with {len(self.contigs)} contigs.")
+            log.warning("The run may take a long time, and the report may be too large to load in your web browser.")
+            log.warning("To save time and space, no read alignments will be output for this assembly (use -f to force read alignment output).")
+            log.warning("To improve performance, consider increasing window size (-w) and minimum contig alignment (-m), and decreasing read depth (-d).")
+
         if self.readfile:
             self.sample_reads()
             self.align_to_assembly('reads')
@@ -112,6 +121,17 @@ class Assembly():
 
 
     @cached_property
+    def n50_length(self):
+        n50_length = 0
+        n50_cumul = 0
+        for c in sorted(self.contigs, key=lambda x: -len(x)):
+            n50_length = len(self.contigs[c])
+            n50_cumul += n50_length
+            if n50_cumul >= len(self)/2:
+                break
+        return n50_length
+
+    @cached_property
     def read_depths(self):
         return self.alignments.depths('read')['depth']
 
@@ -123,6 +143,16 @@ class Assembly():
     @cached_property
     def ploidy_depths(self):
         return [d*self.median_depth for d in [0, 0.5, 1, 1.5, 2, 2.5]]
+
+    def get_windowsize(self, windowsize=None):
+        if windowsize is None:
+            order = 10 ** int(log10(self.n50_length+1))
+            multiplier = int(self.n50_length/order)
+            windowsize = int((order * multiplier) / 10)
+            if windowsize < 10000:
+                windowsize = 10000
+            log.info(f"Ploidy window size set to {windowsize} based on assembly N50 length {self.n50_length}")
+        return windowsize
 
     def options(self):
         return [
@@ -148,7 +178,7 @@ class Assembly():
 
         try:
             log.info(f"Loading genome assembly")
-            assembly_out = open(self.filenames['assembly'], 'w') if not assembly_found else None
+            assembly_out = gzopen(self.filenames['assembly'], 'wt') if not assembly_found else None
             contig_id = 0
             
             assembly_in = None
@@ -159,10 +189,8 @@ class Assembly():
 
             for rec in SeqIO.parse(assembly_in, "fasta"):
                 rec.seq = rec.seq.upper()
-                orig_name = rec.id
-                rec.id = f"{self.basedir}_{rec.id}"
                 contig_ids[rec.id] = contig_id
-                contigs[rec.id] = Contig(contig_id, rec, orig_name, self.telomeres, self.windowsize, self.filenames)
+                contigs[rec.id] = Contig(contig_id, rec, self.telomeres, self.filenames)
                 contig_id += 1
                 if not assembly_found:
                     SeqIO.write(rec, assembly_out, "fasta")
@@ -186,14 +214,13 @@ class Assembly():
 
         return contigs
 
-
     def sample_reads(self):
         if file_exists(self.filenames['sampled_reads']):
             log.info(f"Will use existing {self.filenames['sampled_reads']}")
         else:
             if self.coverage == 0:
                 os.symlink(os.path.abspath(self.readfile), self.filenames['sampled_reads'])
-                log.info(f"Using all reads as coverage option is coverage")
+                log.info(f"Using all reads as coverage option is 0")
             else:
                 log.info(f"Sampling {self.coverage} times coverage of {len(self)/1000000:.1f} Mb assembly from >{self.minreadlength}bp reads in {self.readfile}")
 
@@ -231,29 +258,33 @@ class Assembly():
         bam_filename = self.filenames[f'{aligntype}_bam']
         if file_exists(bam_filename, deps=[self.filenames['sampled_reads'], self.filenames['assembly']]):
             log.info(f"Will use existing {bam_filename}")
-        else:
-            inputfile = x_option = None
-            if aligntype == 'reads':
-                inputfile = self.filenames['sampled_reads']
-                x_option = 'map-ont'
-            elif aligntype == 'contigs':
-                inputfile = self.filenames['assembly']
-                x_option = 'ava-ont'
-            else:
-                log.error(f"Don't know how to align {aligntype}")
-                sys.exit()
-            log.info(f"Aligning {aligntype} {inputfile} to assembly")
+            return
 
-            # samtools uses cores-1 because -@ specifies additional cores and defaults to 0
-            try:
-                align = minimap2[f"-x{x_option}", "-a", "-2", f"-t{self.cores}", \
-                                       self.filenames['assembly'], inputfile] | \
-                              samtools["sort", f"-@{self.cores-1}", \
-                                       f"-o{bam_filename}"]
-                align()
-            except:
-                log.error(f"Failed to align {inputfile} to {self.filenames['assembly']}")
-                sys.exit()
+        if aligntype == 'reads':
+           inputfile = self.filenames['sampled_reads']
+           align = minimap2[f"-xmap-ont", \
+                            "-a", f"-t{self.cores}", self.filenames['assembly'], inputfile]
+        elif aligntype == 'contigs':
+            inputfile = self.filenames['assembly']
+            # -m and -s minimap2 options are only loosely related to alignment length,
+            # so use below the true minimum contig alignment threshold; 
+            # alignments will be further filtered when loaded into database
+            align = minimap2[f"-xasm20", "-D", "-P", \
+                             f"-m{self.min_contig_alignment*0.9}", f"-s{self.min_contig_alignment*0.9}", \
+                             "-a", f"-t{self.cores}", self.filenames['assembly'], inputfile]
+        else:
+            log.error(f"Don't know how to align {aligntype}")
+            sys.exit()
+
+        # samtools uses cores-1 because -@ specifies additional cores and defaults to 0
+        align = align | samtools["sort", f"-@{self.cores-1}", f"-o{bam_filename}"]
+        log.info(f"Aligning {aligntype} {inputfile} to assembly")
+
+        try:
+            align()
+        except:
+            log.error(f"Failed to align {inputfile} to {self.filenames['assembly']}")
+            sys.exit()
 
 
     def index_bam(self, aligntype):

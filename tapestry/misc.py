@@ -95,7 +95,7 @@ def get_weave_args(arglist=[]):
             "'-d', '--depth', help='genome coverage to subsample from FASTQ file (default 50)', type=int, default=50",
             "'-l', '--length', help='minimum read length to retain when subsampling (default 10000)', type=int, default=10000",
             "'-t', '--telomere', help='telomere sequence to search for', type=str, action='append', nargs='+'",
-            "'-w', '--windowsize', help='window size for ploidy calculations (default 10000)', type=int, default=10000",
+            "'-w', '--windowsize', help='window size for ploidy calculations (default ~1/10th of contig N50 length)', type=int",
             "'-f', '--forcereadoutput', help='output read alignments whatever the assembly size (default, only output read alignments for <50 Mb assemblies)', action='store_true'",
             "'-m', '--mincontigalignment', help='minimum length of contig alignment to keep (default 2000)', type=int, default=2000",
             "'-o', '--output', help='directory to write output, default weave_output', type=str, default='weave_output'"])
@@ -127,8 +127,10 @@ def weave_welcome(arglist=[]):
     if arglist.telomere:
         telomere_string = ' '.join(arglist.telomere[0])
     print(f"Telomere sequence(s)\t{telomere_string}")
-    print(f"Ploidy window size\t{arglist.windowsize}")
-    print(f"Force read output\t{arglist.forcereadoutput}")
+    if arglist.windowsize is not None:
+        print(f"Ploidy window size\t{arglist.windowsize}")
+    if arglist.forcereadoutput:
+        print(f"Force read output\t{arglist.forcereadoutput}")
     print(f"Minimum contig alignment\t{arglist.mincontigalignment}")
     print(f"Output directory\t{arglist.output}")
     print()
