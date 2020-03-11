@@ -124,7 +124,7 @@ class Assembly():
     def n50_length(self):
         n50_length = 0
         n50_cumul = 0
-        for c in sorted(self.contigs, key=lambda x: -len(x)):
+        for c in sorted(self.contigs, key=lambda x: -len(self.contigs[x])):
             n50_length = len(self.contigs[c])
             n50_cumul += n50_length
             if n50_cumul >= len(self)/2:
@@ -148,7 +148,7 @@ class Assembly():
         if windowsize is None:
             order = 10 ** int(log10(self.n50_length+1))
             multiplier = int(self.n50_length/order)
-            windowsize = int((order * multiplier) / 10)
+            windowsize = int((order * multiplier) / 20)
             if windowsize < 10000:
                 windowsize = 10000
             log.info(f"Ploidy window size set to {windowsize} based on assembly N50 length {self.n50_length}")
