@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="tapestry",
-    version="0.9.3",
+    version="1.0.0",
     author="John Davey",
     author_email="johnomics@gmail.com",
     description="Validate and edit small eukaryotic genome assemblies",
