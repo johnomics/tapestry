@@ -425,47 +425,6 @@ class Alignments():
             self.alignments.c.ref_end   >= region_start
         ))
 
-    def names_in_region(self, contig_name, region_start, region_end, query_type="read"):
-        stmt = select([self.alignments.c.query])
-        stmt = self.alignments_in_region(stmt, contig_name, query_type, region_start, region_end)
-        results = self.engine.connect().execute(stmt).fetchall()
-        
-        return set([r[0] for r in results])
-
-    def connectors(self, contig, region_start, region_end):
-        # Get primary or supplementary read alignments in the end region
-        stmt = (select([self.alignments.c.query]).where(
-            or_(self.alignments.c.alntype=='primary', self.alignments.c.alntype=='supplementary')
-        ))
-        stmt = self.alignments_in_region(stmt, contig, "read", region_start, region_end)
-        stmt = stmt.order_by(desc(self.alignments.c.aligned_length)) # Order by longest first; see below
-        results = self.engine.connect().execute(stmt).fetchall()
-
-        # Filter to longest 999 alignments to avoid SQLITE_MAX_VARIABLE_NUMBER limits
-        region_reads = set([r[0] for r in results[:999]])
-
-        # Get connecting alignments on other contigs for these reads
-        stmt = (select([self.alignments.c.contig, self.alignments.c.ref_start, self.alignments.c.ref_end])
-               .where(and_(
-                   self.alignments.c.query.in_(region_reads),
-                   self.alignments.c.contig != contig,
-                   or_(self.alignments.c.alntype == 'supplementary', self.alignments.c.alntype == 'primary')
-               )))
-
-        read_results = self.engine.connect().execute(stmt).fetchall()
-        
-        stmt = (select([self.alignments.c.query, self.alignments.c.query_start, self.alignments.c.query_end, self.alignments.c.mq])
-               .where(self.alignments.c.querytype=='contig')
-               )
-        stmt = self.alignments_in_region(stmt, contig, "contig", region_start, region_end)
-        contig_results = self.engine.connect().execute(stmt).fetchall()
-
-        # Label other aligned regions as connectors
-        Connector = namedtuple('Connector', ['contig','start','end'])
-        connectors = [Connector(r[0], r[1], r[2]) for r in read_results + contig_results]
-
-        return connectors
-
     def depths(self, query_type, contig_name=''):
 
         # Get read depths for each region

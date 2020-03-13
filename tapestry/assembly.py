@@ -89,12 +89,12 @@ class Assembly():
             self.contigs[contig].readoutput = self.readoutput
             self.contigs[contig].windowsize = self.windowsize
             
-        if not self.readoutput or len(self.contigs) > 300:
-            log.warning("Tapestry is designed for small genome assemblies (<50 Mb) that are close to complete (<300 contigs).")
-            log.warning(f"It may not perform well for your {len(self)/1000000:.1f} Mb assembly with {len(self.contigs)} contigs.")
-            log.warning("The run may take a long time, and the report may be too large to load in your web browser.")
-            log.warning("To save time and space, no read alignments will be output for this assembly (use -f to force read alignment output).")
-            log.warning("To improve performance, consider increasing window size (-w) and minimum contig alignment (-m), and decreasing read depth (-d).")
+        if not self.readoutput or len(self.contigs) > 500:
+            log.warning("Tapestry is designed for small genome assemblies (<50 Mb) that are close to complete (<500 contigs).")
+            log.warning(f"It will run on your {len(self)/1000000:.1f} Mb assembly with {len(self.contigs)} contigs,")
+            log.warning("but the run may take a long time, and the report may be too large to load in your web browser.")
+            log.warning("To save time and space, no read alignments will be output in the report (use -f to force read alignment output).")
+            log.warning("To improve performance, consider decreasing read depth (-d) and increasing minimum contig alignment (-m).")
 
         if self.readfile:
             self.sample_reads()
@@ -165,8 +165,7 @@ class Assembly():
             {'option': 'Genome coverage',          'value': self.coverage      },
             {'option': 'Minimum read length',      'value': self.minreadlength },
             {'option': 'Window size',              'value': self.windowsize    },
-            {'option': 'Minimum contig alignment', 'value': self.min_contig_alignment },
-            {'option': 'Read alignments included', 'value': self.readoutput  }
+            {'option': 'Minimum contig alignment', 'value': self.min_contig_alignment }
         ]
 
     def load_assembly(self):
@@ -331,7 +330,7 @@ class Assembly():
 
         try:
             with open(f"{self.outdir}/contig_details.tsv", 'wt') as report_file:
-                print("Contig\tLength\tGC%\tMedianReadDepth\tStartTelomeres\tEndTelomeres\tStartMeanReadOverhangBases\tEndMeanReadOverhangBases\tUniqueBases\tUnique%\tCategory\tPloidys\tStartConnectors\tEndConnectors", file=report_file)
+                print("Contig\tLength\tGC%\tMedianReadDepth\tStartTelomeres\tEndTelomeres\tStartMeanReadOverhangBases\tEndMeanReadOverhangBases\tUniqueBases\tUnique%\tPloidys", file=report_file)
                 for contigname in sorted(self.contigs, key=lambda c: -len(self.contigs[c])):
                     print(self.contigs[contigname].report(self.gc), file=report_file)
         except IOError:

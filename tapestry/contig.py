@@ -67,11 +67,8 @@ class Contig:
         report += f"\t{self.mean_end_overhang}"
         report += f"\t{self.unique_bases}"
         report += f"\t{self.unique_pc:.0f}"
-        report += f"\t{self.category(assembly_gc)}"
         report += "\t" + ','.join([f"{p}:{self.ploidy_pc[p]:.2f}" for p in sorted(self.ploidy_pc)])
-        report += "\t" + ','.join(self.left_connectors) if self.left_connectors else '\tNone'
-        report += "\t" + ','.join(self.right_connectors) if self.right_connectors else '\tNone'
-    
+
         return report
 
 
@@ -121,7 +118,6 @@ class Contig:
         self.unique_bases = self.get_unique_bases()
         self.unique_pc = self.get_unique_pc()
         self.tel_start, self.tel_end = self.num_telomeres()
-        self.left_connectors, self.right_connectors = self.get_connectors()
         self.read_alignments = self.plot_read_alignments()
 
         # Alignments work is done; they cannot be pickled, so clean up before return
@@ -136,23 +132,6 @@ class Contig:
         if completeness == 'LR':
             completeness = 'C'
         return completeness if completeness else '-'
-
-
-    def category(self, assembly_gc):
-        category=''
-        if abs(self.gc - assembly_gc) < 2:
-            category += 'N'
-        else:
-            category += '-'
-
-        category += self.completeness()
-        
-        max_ploidy = sorted(self.ploidy_pc, key=lambda x:self.ploidy_pc[x], reverse=True)[0] if self.ploidy_pc else 0
-        if max_ploidy > 4:
-            max_ploidy = 'R'
-        category += f"{max_ploidy}"
-
-        return category
 
 
     def get_gc(self):
@@ -259,51 +238,6 @@ class Contig:
             ploidy_pc[p] += 1/len(self.ploidys)
 
         return ploidy_pc
-
-
-    def get_region_connectors(self, region_start, region_end):
-        connectors = []
-
-        if region_start < 0:
-            region_start = 0
-
-        if region_end > len(self):
-            region_end = len(self)
-
-        region_reads = set(self.alignments.names_in_region(self.name, region_start, region_end))
-
-        connections = defaultdict(IntervalTree)
-        for aln in self.alignments.connectors(self.name, region_start, region_end):
-            connections[aln.contig][aln.start:aln.end] = 1
-
-        for contig in connections:
-            connections[contig].merge_overlaps()
-
-            contig_reads = set()
-            for interval in connections[contig]:
-                contig_reads.update(self.alignments.names_in_region(contig, interval.begin, interval.end))
-
-            connecting_reads = set(region_reads).intersection(set(contig_reads))
-
-            region_connecting_reads_pc = len(connecting_reads)/len(region_reads) if region_reads else 0
-            contig_connecting_reads_pc = len(connecting_reads)/len(contig_reads) if contig_reads else 0
-
-            if region_connecting_reads_pc >= 0.65 and contig_connecting_reads_pc >= 0.1:
-                connectors.append(f"{contig}:{region_connecting_reads_pc:.2f}:{contig_connecting_reads_pc:.2f}")
-
-        return connectors
-
-
-    def get_connectors(self):
-        left_connectors = right_connectors = []
-
-        if self.readoutput:
-            if self.completeness() in ['R', '-']:
-                left_connectors = self.get_region_connectors(0, 10000)
-            if self.completeness() in ['L', '-']:
-                right_connectors = self.get_region_connectors(len(self)-10000, len(self)-1)
-
-        return left_connectors, right_connectors
 
 
     def get_neighbour_details(self, neighbour_contig):

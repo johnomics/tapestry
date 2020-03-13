@@ -93,11 +93,11 @@ def get_weave_args(arglist=[]):
            ["'-a', '--assembly', help='filename of assembly in FASTA format (required)', type=str, required=True",
             "'-r', '--reads', help='filename of long reads in FASTQ format (required; must be gzipped)', type=str, required=True",
             "'-d', '--depth', help='genome coverage to subsample from FASTQ file (default 50)', type=int, default=50",
-            "'-l', '--length', help='minimum read length to retain when subsampling (default 10000)', type=int, default=10000",
+            "'-l', '--length', help='minimum read length to retain when subsampling (default 10000 bp)', type=int, default=10000",
             "'-t', '--telomere', help='telomere sequence to search for', type=str, action='append', nargs='+'",
-            "'-w', '--windowsize', help='window size for ploidy calculations (default ~1/10th of contig N50 length)', type=int",
+            "'-w', '--windowsize', help='window size for ploidy calculations (default ~1/30th of contig N50 length, minimum 10000 bp)', type=int",
             "'-f', '--forcereadoutput', help='output read alignments whatever the assembly size (default, only output read alignments for <50 Mb assemblies)', action='store_true'",
-            "'-m', '--mincontigalignment', help='minimum length of contig alignment to keep (default 2000)', type=int, default=2000",
+            "'-m', '--mincontigalignment', help='minimum length of contig alignment to keep (default 2000 bp)', type=int, default=2000",
             "'-o', '--output', help='directory to write output, default weave_output', type=str, default='weave_output'"])
 
     if not file_exists(args.assembly):

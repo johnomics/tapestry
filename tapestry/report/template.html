@@ -149,7 +149,7 @@ SOFTWARE.
     
     <div style="margin-top:20px">
       <h2><a name="contigs">Contigs</a></h2>
-      <p><span style="color:red">Red circles</span> show telomeres. Opacity of red circles reflects the number of telomere sequences found at each contig end. <span style="color:green">Green blocks</span> show ploidy levels; see <a href="#reads">read alignment plot</a> for key.</p>
+      <p><span style="color:crimson">Red vertical lines</span> at the ends of contigs show telomeres. Opacity of red lines reflects the number of telomere sequences found at each contig end. <span style="color:green">Green blocks</span> show ploidy levels; see <a href="#reads">read alignment plot</a> for key.</p>
       <p>Click on a table radio button to show <a href="#reads">read alignments</a> for the selected contig.</p>
       <p>Click on plot contig names to show contig alignments. Hover over <span style="color:blue; opacity:0.3">blue alignment blocks</span> to show connecting alignments. The selected contig is shown with a dashed black line. <span style="color:purple">Purple lines</span> show contigs with alignments to the selected contig. The opacity of each purple line shows the percentage of the selected contig found in the aligned contig. Dark lines suggest the selected contig is mostly contained in the aligned contig.
       <div class="section">
@@ -201,7 +201,7 @@ SOFTWARE.
 
 
   <footer class="footer">
-      © 2019 <a href="https://github.com/johnomics/tapestry/">John Davey</a>.
+      © 2019-2020 <a href="https://github.com/johnomics/tapestry/">John Davey</a>.
       Built with <a href="https://d3js.org">D3</a>,
       <a href="https://getbootstrap.com">Bootstrap</a>,
       <a href="https://bootstrap-table.com">Bootstrap Table</a>,
@@ -745,21 +745,26 @@ function build_contig(contig, dim, assembly, windowsize) {
         .attr("fill", function(d) { return ploidy_colour(assembly, d); })
         .attr("stroke-opacity", 0);
 
-    contig.append("circle")
+    contig.append("line")
         .attr("class", "telomere start")
-        .attr("cx", dim.xscale(0))
+        .attr("x1", dim.xscale(0))
+        .attr("x2", dim.xscale(0))
         .attr("opacity", function(d) {return d.tel_start / 20; });
     
-    contig.append("circle")
+    contig.append("line")
         .attr("class", "telomere end")
-        .attr("cx", function(d) { return dim.xscale(d.length) })
+        .attr("x1", function(d) { return dim.xscale(d.length) })
+        .attr("x2", function(d) { return dim.xscale(d.length) })
         .attr("opacity", function(d) {return d.tel_end / 20; });
-
-    contig.selectAll(".telomere")
+ 
+    contig.selectAll("line.telomere")
         .attr("contig", contig.attr("name"))
-        .attr("cy", function(d) { return assembly.dim.yscale(d.name) + assembly.dim.yscale.bandwidth()/2; })
-        .attr("r", assembly.dim.yscale.bandwidth())
-        .attr("fill", "red");
+        .attr("y1", function(d) { return assembly.dim.yscale(d.name) - assembly.dim.yscale.bandwidth()/2; })
+        .attr("y2", function(d) { return assembly.dim.yscale(d.name) + assembly.dim.yscale.bandwidth()*1.5; })
+        .attr("style", "stroke:crimson;stroke-width:4");
+
+
+
 }
 
 function reorder_assembly(contigs, assembly, dim) {
@@ -775,9 +780,10 @@ function reorder_assembly(contigs, assembly, dim) {
         .transition(t)
         .attr("y", function(d) { return assembly.dim.yscale(d3.select(this).attr("contig")); });
 
-    assembly.svg.selectAll("circle")
+    assembly.svg.selectAll("line.telomere")
         .transition(t)
-        .attr("cy", function(d) { return assembly.dim.yscale(d3.select(this).attr("contig")) + assembly.dim.yscale.bandwidth()/2; });
+        .attr("y1", function(d) { return assembly.dim.yscale(d.name) - assembly.dim.yscale.bandwidth()/2; })
+        .attr("y2", function(d) { return assembly.dim.yscale(d.name) + assembly.dim.yscale.bandwidth()*1.5; })
 
     assembly.svg.selectAll("path.contig_link")
         .transition(t)
@@ -869,7 +875,7 @@ $('#contig_table').bootstrapTable({
     sortPriority: [{"sortName":"included","sortOrder":"desc"}, {"sortName":"length","sortOrder":"desc"}],
     showExport: true,
     exportTypes: ['csv'],
-    exportOptions: { onCellHtmlData: DoCellData, fileName: outdir + "_filtered" },
+    exportOptions: { onCellHtmlData: DoCellData, fileName: outdir + ".filtered" },
     data: contigs,
     onPostBody: function() { update_assembly() },
     onCheck: function(row) {
