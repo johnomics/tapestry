@@ -1,6 +1,6 @@
 # Tapestry
 
-Tapestry is a tool to validate and edit small eukaryotic genome assemblies using long sequence reads. It is designed to help identify complete chromosomes, symbionts, haplotypes, complex features and errors in close-to-complete genome assemblies.
+Tapestry is a tool to validate and edit small eukaryotic genome assemblies using long sequence reads. It is designed to help identify complete chromosomes, symbionts, haplotypes, complex features and errors in close-to-complete genome assemblies. A preprint is available on [bioRxiv](https://www.biorxiv.org/content/10.1101/2020.04.24.059402v1). 
 
 Tapestry takes as input a genome assembly, a set of long reads, and a telomere sequence, and produces a HTML report summarising the assembly. The report can be used to sort, filter and describe contigs based on the summary information. A new set of contigs can be exported from the report and used to filter the original assembly.
 
