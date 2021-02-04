@@ -1,6 +1,6 @@
 # Tapestry
 
-Tapestry is a tool to validate and edit small eukaryotic genome assemblies using long sequence reads. It is designed to help identify complete chromosomes, symbionts, haplotypes, complex features and errors in close-to-complete genome assemblies. A preprint is available on [bioRxiv](https://www.biorxiv.org/content/10.1101/2020.04.24.059402v1). 
+Tapestry is a tool to validate and edit small eukaryotic genome assemblies using long sequence reads. It is designed to help identify complete chromosomes, symbionts, haplotypes, complex features and errors in close-to-complete genome assemblies. A preprint is available on [bioRxiv](https://www.biorxiv.org/content/10.1101/2020.04.24.059402v1). It has been used to validate a chromosomal [_Angomonas deanei_ genome assembly](https://doi.org/10.1093/g3journal/jkaa018).
 
 Tapestry takes as input a genome assembly, a set of long reads, and a telomere sequence, and produces a HTML report summarising the assembly. The report can be used to sort, filter and describe contigs based on the summary information. A new set of contigs can be exported from the report and used to filter the original assembly.
 
@@ -193,9 +193,14 @@ The `contig_details.tsv` file output by Tapestry contains the basic information 
 
 ## Contact
 
-If you have any problems with or comments about Tapestry, please raise an issue or contact [John Davey](mailto:john.davey@york.ac.uk). Thank you!
+If you have any problems with or comments about Tapestry, please raise an issue or contact [John Davey](mailto:johnomics@gmail.com). Thank you!
+
+
+## Citation
+
+Please cite the [Tapestry preprint](https://www.biorxiv.org/content/10.1101/2020.04.24.059402v1) or, for a peer-reviewed reference, the [_Angomonas deanei_ chromosomal assembly paper](https://doi.org/10.1093/g3journal/jkaa018).
 
 
 ## Acknowledgements
 
-Tapestry was written by John Davey ([email](mailto:john.davey@york.ac.uk), [Twitter](http://twitter.com/johnomics)) in the [Genomics and Bioinformatics](http://york.ac.uk/biology/technology-facility/genomics/) lab at the University of York, supported by pump priming funding from the [Department of Biology](https://www.york.ac.uk/biology/) to [Seth Davis](https://www.york.ac.uk/biology/research/plant-biology/seth-davis/) and [Jeremy Mottram](https://www.york.ac.uk/biology/research/infection-immunity/mottram/).  
+Tapestry was written by John Davey ([email](mailto:johnomics@gmail.com), [Twitter](http://twitter.com/johnomics)) in the [Genomics and Bioinformatics](http://york.ac.uk/biology/technology-facility/genomics/) lab at the University of York, supported by pump priming funding from the [Department of Biology](https://www.york.ac.uk/biology/) to [Seth Davis](https://www.york.ac.uk/biology/research/plant-biology/seth-davis/) and [Jeremy Mottram](https://www.york.ac.uk/biology/research/infection-immunity/mottram/).  
