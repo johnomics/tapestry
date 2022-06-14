@@ -14,4 +14,15 @@ setup(
     test_suite = 'test',
     scripts=['weave', 'clean'],
     python_requires='>=3.6',
+    install_requires=[
+            'biopython',
+            'intervaltree',
+            'jinja2',
+            'numpy',
+            'pandas',
+            'plumbum',
+            'pysam',
+            'sqlalchemy',
+            'tqdm',
+        ]
 )
