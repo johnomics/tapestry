@@ -47,14 +47,14 @@ class Alignments():
     def __init__(self, db_filename, windowsize):
         self.db_filename = db_filename
         self.engine = create_engine(f'sqlite:///{db_filename}')
-        self.metadata = MetaData(self.engine)
+        self.metadata = MetaData()
         self.reads, self.contigs, self.ranges, self.alignments = self.tables()
         self.windowsize = windowsize
 
 
     def windowsize_matches(self):
-        ws_matches = select([func.count(self.ranges.c.width)]).where(self.ranges.c.width == self.windowsize)
-        ws_all =     select([func.count(self.ranges.c.width)])
+        ws_matches = select(func.count(self.ranges.c.width)).where(self.ranges.c.width == self.windowsize)
+        ws_all =     select(func.count(self.ranges.c.width))
         
         with self.engine.connect() as conn:
             matches = conn.execute(ws_matches).fetchall()
@@ -126,7 +126,7 @@ class Alignments():
 
     def load_reference(self, reference):
         try:
-            with self.engine.connect() as conn:
+            with self.engine.begin() as conn:
                 contig_rows = []
                 ranges_rows = []
                 for contig in reference:
@@ -143,7 +143,7 @@ class Alignments():
                                            'end'    : end})
                         if end == contig_length: # Skip remaining windows if last window already reaches end of contig
                             break
-            
+
                 conn.execute(self.contigs.insert(), contig_rows)
                 conn.execute(self.ranges.insert(), ranges_rows)
         except:
@@ -157,7 +157,7 @@ class Alignments():
 
         try:
             log.info(f"Loading {query_type} alignments into database")
-            with self.engine.connect() as conn:
+            with self.engine.begin() as conn:
                 bam = pysam.AlignmentFile(bam_filename, 'rb')
                 aln_id = 0
                 chunk_count = 0
@@ -174,33 +174,33 @@ class Alignments():
 
                     query_start, query_end, left_clip, right_clip = self.get_query_ends(aln, alntype, query_length)
 
-                    if query_type is 'contig' and aln.query_name != aln.reference_name and alntype is not 'unmapped':
-                            # Insert contig alignment in the other direction
-                            aln_id += 1
-                            alignment_chunk.append({
-                                'id':aln_id,
-                                'query':aln.reference_name,
-                                'querytype':query_type,
-                                'alntype':alntype,
-                                'contig':aln.query_name,
-                                'mq':aln.mapping_quality,
-                                'reversed':aln.is_reverse,
-                                'ref_start': query_start,
-                                'ref_end': query_end,
-                                'query_start': aln.reference_start + 1, # BAM is 0-based
-                                'query_end': aln.reference_end,
-                                'left_clip': None,
-                                'right_clip': None,
-                                'aligned_length': None,
-                                'pre_contig': None,
-                                'pre_distance': None,
-                                'post_contig': None,
-                                'post_distance': None
-                            })
+                    if query_type == 'contig' and aln.query_name != aln.reference_name and alntype != 'unmapped':
+                        # Insert contig alignment in the other direction
+                        aln_id += 1
+                        alignment_chunk.append({
+                            'id':aln_id,
+                            'query':aln.reference_name,
+                            'querytype':query_type,
+                            'alntype':alntype,
+                            'contig':aln.query_name,
+                            'mq':aln.mapping_quality,
+                            'reversed':aln.is_reverse,
+                            'ref_start': query_start,
+                            'ref_end': query_end,
+                            'query_start': aln.reference_start + 1, # BAM is 0-based
+                            'query_end': aln.reference_end,
+                            'left_clip': None,
+                            'right_clip': None,
+                            'aligned_length': None,
+                            'pre_contig': None,
+                            'pre_distance': None,
+                            'post_contig': None,
+                            'post_distance': None
+                        })
 
-                    if query_type is 'read' and aln.query_name not in read_names:
-                            read_names[aln.query_name] = True
-                            reads_chunk.append({'name':aln.query_name, 'length':query_length})
+                    if query_type == 'read' and aln.query_name not in read_names:
+                        read_names[aln.query_name] = True
+                        reads_chunk.append({'name':aln.query_name, 'length':query_length})
 
                     aln_id += 1
                     alignment_chunk.append({
@@ -265,7 +265,7 @@ class Alignments():
 
     def get_query_ends(self, aln, alntype, query_length):
         query_start = query_end = None
-        if alntype is 'unmapped':
+        if alntype == 'unmapped':
             return query_start, query_end, None, None
         first_clip_length = self.get_clip_lengths(aln.cigartuples[0])
         last_clip_length  = self.get_clip_lengths(aln.cigartuples[-1])
@@ -289,7 +289,7 @@ class Alignments():
 
     def get_multi_alignments(self):
         # Select alignments and read lengths from reads with more than one alignment
-        stmt = (select([
+        stmt = (select(
                     self.alignments.c.id,
                     self.alignments.c.query,
                     self.alignments.c.contig,
@@ -297,15 +297,15 @@ class Alignments():
                     self.alignments.c.query_end,
                     self.reads.c.length,
                     self.alignments.c.reversed
-                 ])
+                 )
                  .select_from(self.reads.join(self.alignments, self.reads.c.name == self.alignments.c.query))
                  .where(
                    and_(
                      self.alignments.c.query.in_(
                        # Get read names for reads with more than one primary/supplementary alignment (alncount > 1)
-                       (select([text('query')])
+                       (select(text('query'))
                           .select_from(
-                            select([self.alignments.c.query, func.count(self.alignments.c.query).label('alncount')])
+                            select(self.alignments.c.query, func.count(self.alignments.c.query).label('alncount'))
                               .where(
                                 and_(
                                   self.alignments.c.querytype=='read',
@@ -313,6 +313,7 @@ class Alignments():
                                 )
                               )
                             .group_by('query')
+                            .subquery()
                           )
                           .where(text("alncount > 1"))
                         )
@@ -347,7 +348,7 @@ class Alignments():
         alncount = 0
         updates = []
 
-        with self.engine.connect() as conn:
+        with self.engine.begin() as conn:
 
             for i, row in tqdm(enumerate(results), unit=" alignments", total=len(results), leave=False):
                 update = {'a_id': row[0], 
@@ -390,13 +391,13 @@ class Alignments():
 
 
     def contig_alignments(self, contig_name):
-        stmt = (select([
+        stmt = (select(
                     self.alignments.c.ref_start,
                     self.alignments.c.ref_end,
                     self.alignments.c.query,
                     self.alignments.c.query_start,
                     self.alignments.c.query_end,
-                ])
+                )
                 .where(and_(
                     self.alignments.c.querytype == 'contig',
                     self.alignments.c.contig == contig_name
@@ -428,13 +429,13 @@ class Alignments():
     def depths(self, query_type, contig_name=''):
 
         # Get read depths for each region
-        rd = (select([
+        rd = (select(
                 self.ranges.c.contig,
                 self.ranges.c.start,
                 (cast(func.sum((func.min(self.alignments.c.ref_end,   self.ranges.c.end  ) -
                          func.max(self.alignments.c.ref_start, self.ranges.c.start)   )), Float) / 
                          (self.ranges.c.end - self.ranges.c.start + 1)).label('depth')
-             ])
+             )
               .select_from(self.ranges.join(self.alignments, self.ranges.c.contig == self.alignments.c.contig))
               .where(and_(self.alignments.c.alntype.in_(["primary", "supplementary"]),
                           self.alignments.c.mq == 60)
@@ -447,11 +448,11 @@ class Alignments():
         rdg = rdf.group_by(self.ranges.c.contig, self.ranges.c.start).alias()
 
         # Combine with ranges table again to fill empty regions
-        stmt = (select([
+        stmt = (select(
                     self.ranges.c.contig, 
                     self.ranges.c.start, 
                     self.ranges.c.end, 
-                    rdg.c.depth])
+                    rdg.c.depth)
                 .select_from(
                     self.ranges.outerjoin(rdg,
                         and_(self.ranges.c.contig == rdg.c.contig,
@@ -466,16 +467,15 @@ class Alignments():
         depths = pd.DataFrame(results)
         if depths.empty:
             return None
-        depths.columns =  results[0].keys()
         depths = depths.fillna(0).reset_index()
 
         return depths
 
 
     def get_start_overhangs(self, contig_name, region_start, region_end, aligned_length=0):
-        stmt = (select([
+        stmt = (select(
                     region_start - (self.alignments.c.ref_start - self.alignments.c.left_clip)
-                ])
+                )
                 .where(and_(
                             self.alignments.c.ref_start.between(region_start, region_end),
                             self.alignments.c.contig.like(contig_name + "%"),
@@ -493,9 +493,9 @@ class Alignments():
 
 
     def get_end_overhangs(self, contig_name, region_start, region_end, aligned_length=0):
-        stmt = (select([
+        stmt = (select(
                     self.alignments.c.ref_end + self.alignments.c.right_clip - region_end
-                ])
+                )
                 .where(and_(
                             self.alignments.c.ref_end.between(region_start, region_end),
                             self.alignments.c.contig.like(contig_name + "%"),
@@ -512,7 +512,7 @@ class Alignments():
         return overhangs
 
     def read_alignments(self, contig):
-        stmt = (select([
+        stmt = (select(
                 self.alignments.c.ref_start,
                 self.alignments.c.ref_end,
                 self.alignments.c.left_clip,
@@ -522,7 +522,7 @@ class Alignments():
                 self.alignments.c.pre_distance,
                 self.alignments.c.post_contig,
                 self.alignments.c.post_distance
-            ])
+            )
             .select_from(self.reads.join(self.alignments, self.reads.c.name == self.alignments.c.query))
             .where(and_(
                 self.alignments.c.contig == contig,
@@ -537,5 +537,4 @@ class Alignments():
         alignments = pd.DataFrame(results)
         if alignments.empty:
             return None
-        alignments.columns =  results[0].keys()
         return alignments
