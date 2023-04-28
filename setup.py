@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="tapestry",
-    version="1.0.0",
+    version="1.0.1",
     author="John Davey",
     author_email="johnomics@gmail.com",
     description="Validate and edit small eukaryotic genome assemblies",
@@ -22,7 +22,7 @@ setup(
             'pandas',
             'plumbum',
             'pysam',
-            'sqlalchemy',
+            'sqlalchemy>=1.4.0',
             'tqdm',
         ]
 )

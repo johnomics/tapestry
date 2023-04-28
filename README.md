@@ -11,7 +11,7 @@ Tapestry is designed for manual editing of small eukaryotic genome assemblies, p
 ## Getting Started
 
 ### Installation
-Tapestry is in the [Bioconda](https://bioconda.github.io) repository. If you are set up to use Bioconda (see [Install conda](https://bioconda.github.io/#install-conda) and [Set up channels](https://bioconda.github.io/#set-up-channels)), install the latest release with `conda`:
+Tapestry is in the [Bioconda](https://bioconda.github.io) repository. If you are set up to use Bioconda (see [Install conda](https://bioconda.github.io/#install-conda) and [Set up channels](https://bioconda.github.io/#set-up-channels)), install the latest release with `conda` (or [Mamba](https://mamba.readthedocs.io/en/latest/)):
 
 ```
 conda install tapestry
@@ -20,21 +20,19 @@ conda install tapestry
 If you want to install the latest commit, make sure the requirements below are satisfied (or a previous release is installed with conda), and then pull from github and install:
 ```
 git clone https://github.com/johnomics/tapestry
-cd tapestry
-python setup.py install
+pip install tapestry
 ```
 
 ### Requirements
 
-Tapestry requires the following packages and tools (which will be installed by `conda` automatically):
+Tapestry requires the following packages and tools:
 
-- Linux or macOS
 - Python 3.6 or later
 
 - [minimap2](https://github.com/lh3/minimap2)
 - [samtools](http://www.htslib.org/download/)
 
-Python packages:
+Python packages (should be installed by pip):
 - biopython
 - intervaltree
 - jinja2
@@ -42,9 +40,10 @@ Python packages:
 - pandas
 - plumbum
 - pysam
-- sqlalchemy
+- sqlalchemy>=1.4.0
 - tqdm
 
+These dependencies can be installed with conda. Bioconda is not compatible with Apple Silicon; for recent Macs, install Python, minimap2 and samtools separately and then use `git clone` and `pip` as above. Use `make arm_neon=1` to compile minimap2 and samtools.
 
 ### Basic usage
 
